@@ -5,6 +5,7 @@ const prism = require('prism-media');
 const { PassThrough } = require('stream');
 const FormData = require('form-data');
 const axios = require('axios');
+require('dotenv').config();
 
 const client = new Client({
     intents: [
@@ -16,8 +17,8 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
-const TOKEN = fs.readFileSync('discord_token.txt', 'utf-8').trim();
-const OPENAI_API_KEY = fs.readFileSync('openai_api_key.txt', 'utf-8').trim();
+const TOKEN = process.env.DISCORD_TOKEN;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 (async () => {
     console.log(generateDependencyReport());
