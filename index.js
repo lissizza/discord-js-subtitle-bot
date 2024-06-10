@@ -2,9 +2,9 @@ const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, Bu
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, generateDependencyReport } = require('@discordjs/voice');
 const fs = require('fs');
 const prism = require('prism-media');
-const ffmpeg = require('fluent-ffmpeg');
-const OpenAI = require('openai');
-const sodium = require('libsodium-wrappers');
+const { PassThrough } = require('stream');
+const FormData = require('form-data');
+const axios = require('axios');
 
 const client = new Client({
     intents: [
@@ -19,30 +19,19 @@ const client = new Client({
 const TOKEN = fs.readFileSync('discord_token.txt', 'utf-8').trim();
 const OPENAI_API_KEY = fs.readFileSync('openai_api_key.txt', 'utf-8').trim();
 
-const openai = new OpenAI({
-    apiKey: OPENAI_API_KEY,
-});
-
-// Ensure recordings directory exists
-const path = './recordings';
-if (!fs.existsSync(path)){
-    fs.mkdirSync(path);
-}
-
 (async () => {
-    await sodium.ready;
     console.log(generateDependencyReport());
 
     client.once('ready', async () => {
         console.log(`Logged in as ${client.user.tag}`);
 
-        // Найти канал #general
+        // Find the #general channel
         const guilds = client.guilds.cache;
         guilds.forEach(async (guild) => {
             const channel = guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
 
             if (channel) {
-                // Создать кнопки
+                // Create buttons
                 const row = new ActionRowBuilder()
                     .addComponents(
                         new ButtonBuilder()
@@ -55,7 +44,7 @@ if (!fs.existsSync(path)){
                             .setStyle(ButtonStyle.Danger),
                     );
 
-                // Отправить сообщение с кнопками
+                // Send message with buttons
                 await channel.send({ content: 'Use the buttons below to control the bot:', components: [row] });
             } else {
                 console.log('Channel #general not found');
@@ -84,9 +73,6 @@ if (!fs.existsSync(path)){
 
                 receiver.speaking.on('start', async userId => {
                     const user = await client.users.fetch(userId);
-                    const pcmPath = `./recordings/${user.username}-${Date.now()}.pcm`;
-                    const wavPath = pcmPath.replace('.pcm', '.wav');
-
                     const audioStream = receiver.subscribe(userId, {
                         end: {
                             behavior: EndBehaviorType.AfterSilence,
@@ -95,43 +81,44 @@ if (!fs.existsSync(path)){
                     });
 
                     const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: 48000, channels: 1, frameSize: 960 }));
-                    const fileStream = fs.createWriteStream(pcmPath);
+                    const wavStream = new PassThrough();
+                    const ffmpeg = require('fluent-ffmpeg');
 
-                    pcmStream.pipe(fileStream);
+                    const ffmpegProcess = ffmpeg(pcmStream)
+                        .inputFormat('s16le')
+                        .audioFrequency(48000)
+                        .audioChannels(1)
+                        .toFormat('wav')
+                        .on('error', (err) => {
+                            console.error('Error processing audio:', err);
+                        })
+                        .pipe(wavStream);
 
-                    fileStream.on('finish', () => {
-                        ffmpeg(pcmPath)
-                            .inputFormat('s16le')
-                            .audioFrequency(48000)
-                            .audioChannels(1)
-                            .toFormat('wav')
-                            .save(wavPath)
-                            .on('end', async () => {
-                                try {
-                                    const audioData = fs.createReadStream(wavPath);
-                                    const response = await openai.audio.transcriptions.create({
-                                        model: 'whisper-1',
-                                        file: audioData,
-                                        response_format: 'json',
-                                    });
-
-                                    if (response.data && response.data.text) {
-                                        interaction.channel.send(`${user.username}: ${response.data.text}`);
-                                    } else {
-                                        console.error('Transcription response does not contain text:', response);
-                                    }
-                                } catch (error) {
-                                    console.error('Error transcribing audio:', error);
-                                } finally {
-                                    // fs.unlinkSync(pcmPath); // Uncomment if you want to delete the pcm file
-                                    // fs.unlinkSync(wavPath); // Uncomment if you want to delete the wav file
-                                }
-                            });
+                    const form = new FormData();
+                    form.append('model', 'whisper-1');
+                    form.append('file', wavStream, {
+                        contentType: 'audio/wav',
+                        filename: 'audio.wav'
                     });
 
-                    fileStream.on('error', error => {
-                        console.error('Error writing PCM file:', error);
-                    });
+                    const headers = {
+                        ...form.getHeaders(),
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`
+                    };
+
+                    try {
+                        console.log('Sending transcription request...');
+                        const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, { headers });
+
+                        if (response.data && response.data.text) {
+                            console.log(`Transcription: ${response.data.text}`);
+                            interaction.channel.send(`${user.username}: ${response.data.text}`);
+                        } else {
+                            console.error('Transcription response does not contain text:', response.data);
+                        }
+                    } catch (error) {
+                        console.error('Error transcribing audio:', error.response ? error.response.data : error.message);
+                    }
                 });
 
                 await interaction.reply({ content: 'Joined the voice channel!', ephemeral: true });
