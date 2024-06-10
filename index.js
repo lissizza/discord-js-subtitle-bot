@@ -1,10 +1,10 @@
 const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, generateDependencyReport } = require('@discordjs/voice');
-const fs = require('fs');
 const prism = require('prism-media');
 const { PassThrough } = require('stream');
 const FormData = require('form-data');
 const axios = require('axios');
+const ffmpeg = require('fluent-ffmpeg');
 require('dotenv').config();
 
 const client = new Client({
@@ -26,13 +26,11 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
     client.once('ready', async () => {
         console.log(`Logged in as ${client.user.tag}`);
 
-        // Find the #general channel
         const guilds = client.guilds.cache;
         guilds.forEach(async (guild) => {
             const channel = guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
 
             if (channel) {
-                // Create buttons
                 const row = new ActionRowBuilder()
                     .addComponents(
                         new ButtonBuilder()
@@ -45,7 +43,6 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
                             .setStyle(ButtonStyle.Danger),
                     );
 
-                // Send message with buttons
                 await channel.send({ content: 'Use the buttons below to control the bot:', components: [row] });
             } else {
                 console.log('Channel #general not found');
@@ -83,7 +80,9 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
                     const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: 48000, channels: 1, frameSize: 960 }));
                     const wavStream = new PassThrough();
-                    const ffmpeg = require('fluent-ffmpeg');
+
+                    const audioBuffer = [];
+                    let duration = 0;
 
                     const ffmpegProcess = ffmpeg(pcmStream)
                         .inputFormat('s16le')
@@ -93,33 +92,43 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
                         .on('error', (err) => {
                             console.error('Error processing audio:', err);
                         })
+                        .on('end', async () => {
+                            if (duration > 0.5) {
+                                const form = new FormData();
+                                form.append('model', 'whisper-1');
+                                form.append('file', Buffer.concat(audioBuffer), {
+                                    contentType: 'audio/wav',
+                                    filename: 'audio.wav'
+                                });
+
+                                const headers = {
+                                    ...form.getHeaders(),
+                                    'Authorization': `Bearer ${OPENAI_API_KEY}`
+                                };
+
+                                try {
+                                    console.log('Sending transcription request...');
+                                    const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, { headers });
+
+                                    if (response.data && response.data.text) {
+                                        console.log(`Transcription: ${response.data.text}`);
+                                        interaction.channel.send(`${user.username}: ${response.data.text}`);
+                                    } else {
+                                        console.error('Transcription response does not contain text:', response.data);
+                                    }
+                                } catch (error) {
+                                    console.error('Error transcribing audio:', error.response ? error.response.data : error.message);
+                                }
+                            } else {
+                                console.log('Audio is too short to transcribe.');
+                            }
+                        })
                         .pipe(wavStream);
 
-                    const form = new FormData();
-                    form.append('model', 'whisper-1');
-                    form.append('file', wavStream, {
-                        contentType: 'audio/wav',
-                        filename: 'audio.wav'
+                    wavStream.on('data', chunk => {
+                        audioBuffer.push(chunk);
+                        duration += chunk.length / (48000 * 2 * 1); // 48000 samples per second, 2 bytes per sample, 1 channel
                     });
-
-                    const headers = {
-                        ...form.getHeaders(),
-                        'Authorization': `Bearer ${OPENAI_API_KEY}`
-                    };
-
-                    try {
-                        console.log('Sending transcription request...');
-                        const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, { headers });
-
-                        if (response.data && response.data.text) {
-                            console.log(`Transcription: ${response.data.text}`);
-                            interaction.channel.send(`${user.username}: ${response.data.text}`);
-                        } else {
-                            console.error('Transcription response does not contain text:', response.data);
-                        }
-                    } catch (error) {
-                        console.error('Error transcribing audio:', error.response ? error.response.data : error.message);
-                    }
                 });
 
                 await interaction.reply({ content: 'Joined the voice channel!', ephemeral: true });
