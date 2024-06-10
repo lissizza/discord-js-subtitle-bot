@@ -20,6 +20,12 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
+const MIN_DURATION = 1.0; // minimum duration in seconds
+const SAMPLE_RATE = 48000; // audio sample rate
+const CHANNELS = 1; // number of audio channels
+const BYTES_PER_SAMPLE = 2; // bytes per sample
+const SILENCE_DURATION = 100; // duration of silence to end the recording
+
 (async () => {
     console.log(generateDependencyReport());
 
@@ -74,11 +80,11 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
                     const audioStream = receiver.subscribe(userId, {
                         end: {
                             behavior: EndBehaviorType.AfterSilence,
-                            duration: 100,
+                            duration: SILENCE_DURATION,
                         },
                     });
 
-                    const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: 48000, channels: 1, frameSize: 960 }));
+                    const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 }));
                     const wavStream = new PassThrough();
 
                     const audioBuffer = [];
@@ -86,14 +92,14 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
                     const ffmpegProcess = ffmpeg(pcmStream)
                         .inputFormat('s16le')
-                        .audioFrequency(48000)
-                        .audioChannels(1)
+                        .audioFrequency(SAMPLE_RATE)
+                        .audioChannels(CHANNELS)
                         .toFormat('wav')
                         .on('error', (err) => {
                             console.error('Error processing audio:', err);
                         })
                         .on('end', async () => {
-                            if (duration > 0.5) {
+                            if (duration > MIN_DURATION) {
                                 const form = new FormData();
                                 form.append('model', 'whisper-1');
                                 form.append('file', Buffer.concat(audioBuffer), {
@@ -127,7 +133,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
                     wavStream.on('data', chunk => {
                         audioBuffer.push(chunk);
-                        duration += chunk.length / (48000 * 2 * 1); // 48000 samples per second, 2 bytes per sample, 1 channel
+                        duration += chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS);
                     });
                 });
 
