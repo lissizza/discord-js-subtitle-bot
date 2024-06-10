@@ -20,7 +20,7 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-const MIN_DURATION = 1; // minimum voice duration in seconds
+const MIN_DURATION = 0.7; // minimum duration in seconds
 const SAMPLE_RATE = 48000; // audio sample rate
 const CHANNELS = 1; // number of audio channels
 const BYTES_PER_SAMPLE = 2; // bytes per sample
@@ -35,6 +35,7 @@ const WHISPER_SETTINGS = {
 let selectedTextChannel = null;
 let connection = null;
 
+// Functions to setup the bot
 async function setupBot() {
     console.log(generateDependencyReport());
     client.once('ready', onReady);
@@ -51,6 +52,7 @@ async function onReady() {
     });
 }
 
+// Functions to handle interactions and messages
 async function onInteractionCreate(interaction) {
     if (!interaction.isButton()) return;
 
@@ -71,6 +73,7 @@ async function onMessageCreate(message) {
     }
 }
 
+// Functions to handle voice channel interactions
 async function joinVoice(member) {
     if (!member.voice.channel) {
         member.send('You need to join a voice channel first!');
@@ -140,6 +143,7 @@ function leaveVoice(guildId) {
     connection = null;
 }
 
+// Functions to handle specific actions
 async function handleChannelSelection(interaction) {
     const channelId = interaction.customId.split('_')[1];
     selectedTextChannel = interaction.guild.channels.cache.get(channelId);
@@ -189,11 +193,17 @@ async function handleLeaveCommand(message) {
     message.reply('Disconnected from the voice channel.');
 }
 
+// Utility functions
 async function sendChannelSelectionMessage(guild) {
     const textChannels = guild.channels.cache.filter(channel => channel.type === ChannelType.GuildText);
-    const row = new ActionRowBuilder();
+    const rows = [];
+    let row = new ActionRowBuilder();
 
     textChannels.forEach(channel => {
+        if (row.components.length >= 5) {
+            rows.push(row);
+            row = new ActionRowBuilder();
+        }
         row.addComponents(
             new ButtonBuilder()
                 .setCustomId(`select_${channel.id}`)
@@ -202,16 +212,24 @@ async function sendChannelSelectionMessage(guild) {
         );
     });
 
-    row.addComponents(
-        new ButtonBuilder()
-            .setCustomId('leave')
-            .setLabel('Leave')
-            .setStyle(ButtonStyle.Danger)
+    // If the last row has components, add it to the rows
+    if (row.components.length > 0) {
+        rows.push(row);
+    }
+
+    // Add the leave button in a new row
+    rows.push(
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('leave')
+                .setLabel('Leave')
+                .setStyle(ButtonStyle.Danger)
+        )
     );
 
     const generalChannel = guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
     if (generalChannel) {
-        await generalChannel.send({ content: 'Select the text channel to post transcriptions:', components: [row] });
+        await generalChannel.send({ content: 'Select the text channel to post transcriptions:', components: rows });
     } else {
         console.log('Channel #general not found');
     }
@@ -255,4 +273,5 @@ async function sendTranscriptionRequest(audioBuffer, user) {
     }
 }
 
+// Start the bot
 setupBot();
