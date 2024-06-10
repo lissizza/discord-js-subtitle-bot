@@ -20,11 +20,17 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-const MIN_DURATION = 1.0; // minimum duration in seconds
+const MIN_DURATION = 1.1; // minimum duration in seconds
 const SAMPLE_RATE = 48000; // audio sample rate
 const CHANNELS = 1; // number of audio channels
 const BYTES_PER_SAMPLE = 2; // bytes per sample
 const SILENCE_DURATION = 100; // duration of silence to end the recording
+
+const WHISPER_SETTINGS = {
+    temperature: 0.1, // Lower temperature reduces creativity and ensures more deterministic output
+    language: 'en', // Specify the language, if known, to improve accuracy
+    suppress_tokens: '-1' // Suppress tokens to avoid common issues, '-1' disables this feature
+};
 
 (async () => {
     console.log(generateDependencyReport());
@@ -106,6 +112,11 @@ const SILENCE_DURATION = 100; // duration of silence to end the recording
                                     contentType: 'audio/wav',
                                     filename: 'audio.wav'
                                 });
+
+                                // Add Whisper settings to the form
+                                for (const [key, value] of Object.entries(WHISPER_SETTINGS)) {
+                                    form.append(key, value);
+                                }
 
                                 const headers = {
                                     ...form.getHeaders(),
