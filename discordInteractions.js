@@ -29,55 +29,62 @@ const startChannelName = args.length > 0 ? args[0] : 'general';
 async function handleInteractionCreate(interaction) {
     if (!interaction.isButton() && !interaction.isModalSubmit()) return;
 
-    if (interaction.isButton()) {
-        if (interaction.customId === 'join') {
-            await handleJoin(interaction);
-        } else if (interaction.customId === 'leave') {
-            await handleLeave(interaction);
-        } else if (interaction.customId === 'change_channel') {
-            await showChannelSelection(interaction);
-        } else if (interaction.customId === 'settings') {
-            await showSettings(interaction);
-        } else if (interaction.customId.startsWith('select_')) {
-            await handleChannelSelection(interaction);
-        } else if (interaction.customId.startsWith('update_')) {
+    try {
+        if (interaction.isButton()) {
+            if (interaction.customId === 'join') {
+                await handleJoin(interaction);
+            } else if (interaction.customId === 'leave') {
+                await handleLeave(interaction);
+            } else if (interaction.customId === 'change_channel') {
+                await showChannelSelection(interaction);
+            } else if (interaction.customId === 'settings') {
+                await showSettings(interaction);
+            } else if (interaction.customId.startsWith('select_')) {
+                await handleChannelSelection(interaction);
+            } else if (interaction.customId.startsWith('update_')) {
+                const setting = interaction.customId.split('_')[1];
+                const modal = createSettingsModal(setting, getSettingsValue(setting));
+                await interaction.showModal(modal);
+            }
+        } else if (interaction.isModalSubmit()) {
             const setting = interaction.customId.split('_')[1];
-            const modal = createSettingsModal(setting, getSettingsValue(setting));
-            await interaction.showModal(modal);
-        }
-    } else if (interaction.isModalSubmit()) {
-        const setting = interaction.customId.split('_')[1];
-        const newValue = interaction.fields.getTextInputValue(`input_${setting}`);
+            const newValue = interaction.fields.getTextInputValue(`input_${setting}`);
 
-        // Update the settings based on the interaction
-        switch (setting) {
-            case 'MIN_DURATION':
-                MIN_DURATION = parseFloat(newValue);
-                await interaction.reply({ content: `Minimal Speech Duration set to ${MIN_DURATION}`, ephemeral: true });
-                break;
-            case 'SAMPLE_RATE':
-                SAMPLE_RATE = parseInt(newValue);
-                await interaction.reply({ content: `Sample Rate set to ${SAMPLE_RATE}`, ephemeral: true });
-                break;
-            case 'CHANNELS':
-                CHANNELS = parseInt(newValue);
-                await interaction.reply({ content: `Audio Channels Count set to ${CHANNELS}`, ephemeral: true });
-                break;
-            case 'SILENCE_DURATION':
-                SILENCE_DURATION = parseInt(newValue);
-                await interaction.reply({ content: `Silence Duration set to ${SILENCE_DURATION}`, ephemeral: true });
-                break;
-            case 'temperature':
-                WHISPER_SETTINGS.temperature = parseFloat(newValue);
-                await interaction.reply({ content: `Whisper Temperature set to ${WHISPER_SETTINGS.temperature}`, ephemeral: true });
-                break;
-            case 'language':
-                WHISPER_SETTINGS.language = newValue;
-                await interaction.reply({ content: `Whisper Language set to ${WHISPER_SETTINGS.language}`, ephemeral: true });
-                break;
-            // Add other settings as needed
-            default:
-                await interaction.reply({ content: 'Unknown setting.', ephemeral: true });
+            // Update the settings based on the interaction
+            switch (setting) {
+                case 'MIN_DURATION':
+                    MIN_DURATION = parseFloat(newValue);
+                    await interaction.reply({ content: `Minimal Speech Duration set to ${MIN_DURATION}`, ephemeral: true });
+                    break;
+                case 'SAMPLE_RATE':
+                    SAMPLE_RATE = parseInt(newValue);
+                    await interaction.reply({ content: `Sample Rate set to ${SAMPLE_RATE}`, ephemeral: true });
+                    break;
+                case 'CHANNELS':
+                    CHANNELS = parseInt(newValue);
+                    await interaction.reply({ content: `Audio Channels Count set to ${CHANNELS}`, ephemeral: true });
+                    break;
+                case 'SILENCE_DURATION':
+                    SILENCE_DURATION = parseInt(newValue);
+                    await interaction.reply({ content: `Silence Duration set to ${SILENCE_DURATION}`, ephemeral: true });
+                    break;
+                case 'temperature':
+                    WHISPER_SETTINGS.temperature = parseFloat(newValue);
+                    await interaction.reply({ content: `Whisper Temperature set to ${WHISPER_SETTINGS.temperature}`, ephemeral: true });
+                    break;
+                case 'language':
+                    WHISPER_SETTINGS.language = newValue;
+                    await interaction.reply({ content: `Whisper Language set to ${WHISPER_SETTINGS.language}`, ephemeral: true });
+                    break;
+                // Add other settings as needed
+                default:
+                    await interaction.reply({ content: 'Unknown setting.', ephemeral: true });
+            }
+        }
+    } catch (error) {
+        console.error('Error handling interaction:', error);
+        if (!interaction.replied) {
+            await interaction.reply({ content: 'There was an error while executing this interaction!', ephemeral: true });
         }
     }
 }
@@ -226,7 +233,7 @@ async function handleChannelSelection(interaction) {
 
 async function handleJoin(interaction) {
     if (interaction.member.voice.channel) {
-        joinVoice(interaction.member);
+        await joinVoice(interaction.member);
         await interaction.reply({ content: 'Joined the voice channel!', ephemeral: true });
     } else {
         await interaction.reply({ content: 'You need to join a voice channel first!', ephemeral: true });
@@ -250,7 +257,7 @@ async function handleJoinCommand(message) {
     if (textChannel && textChannel.guild.id === message.guild.id) {
         selectedTextChannelName = textChannel.name;
         await message.reply(`Selected channel: ${selectedTextChannelName}`);
-        joinVoice(message.member);
+        await joinVoice(message.member);
     } else {
         message.reply('Text channel not found or not on the same server.');
     }
