@@ -40,18 +40,25 @@ const getSettingsTitle = (setting) => {
 };
 
 const getSettingsValue = (setting) => {
+    console.log(`Getting value for setting: ${setting}`);
     switch (setting) {
         case 'MIN_DURATION':
+            console.log(`Getting value for MIN_DURATION: ${MIN_DURATION}`);
             return MIN_DURATION.toString();
         case 'SAMPLE_RATE':
+            console.log(`Getting value for SAMPLE_RATE: ${SAMPLE_RATE}`);
             return SAMPLE_RATE.toString();
         case 'CHANNELS':
+            console.log(`Getting value for CHANNELS: ${CHANNELS}`);
             return CHANNELS.toString();
         case 'SILENCE_DURATION':
+            console.log(`Getting value for SILENCE_DURATION: ${SILENCE_DURATION}`);
             return SILENCE_DURATION.toString();
         case 'temperature':
+            console.log(`Getting value for temperature: ${WHISPER_SETTINGS.temperature}`);
             return WHISPER_SETTINGS.temperature.toString();
         case 'language':
+            console.log(`Getting value for language: ${WHISPER_SETTINGS.language}`);
             return WHISPER_SETTINGS.language;
         default:
             return '';

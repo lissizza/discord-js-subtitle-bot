@@ -19,10 +19,10 @@ const {
 } = require('./config');
 const { createSettingsModal, getSettingsValue, createSettingsButtons } = require('./visualElements');
 
-let selectedTextChannelName = null; // изменено на название канала
+let selectedTextChannelName = null; // changed to channel name
 let connection = null;
 
-// Получение аргумента канала из командной строки
+// Get the channel argument from the command line
 const args = process.argv.slice(2);
 const startChannelName = args.length > 0 ? args[0] : 'general';
 
@@ -42,13 +42,22 @@ async function handleInteractionCreate(interaction) {
             } else if (interaction.customId.startsWith('select_')) {
                 await handleChannelSelection(interaction);
             } else if (interaction.customId.startsWith('update_')) {
-                const setting = interaction.customId.split('_')[1];
-                const modal = createSettingsModal(setting, getSettingsValue(setting));
-                await interaction.showModal(modal);
+                const setting = interaction.customId.substring(7);
+                console.log(`Received update request for setting: ${setting}`);
+                const defaultValue = getSettingsValue(setting);
+                console.log(`Updating setting ${setting} with default value: ${defaultValue}`);
+                if (!defaultValue) {
+                    console.error(`No default value for setting ${setting}`);
+                } else {
+                    const modal = createSettingsModal(setting, defaultValue);
+                    await interaction.showModal(modal);
+                }
             }
         } else if (interaction.isModalSubmit()) {
-            const setting = interaction.customId.split('_')[1];
+            const setting = interaction.customId.substring(9);
             const newValue = interaction.fields.getTextInputValue(`input_${setting}`);
+
+            console.log(`Received new value for setting ${setting}: ${newValue}`);
 
             // Update the settings based on the interaction
             switch (setting) {
@@ -89,55 +98,6 @@ async function handleInteractionCreate(interaction) {
     }
 }
 
-async function handleMessageCreate(message) {
-    if (message.content === '!menu') {
-        await sendInitialMessage(message.guild);
-    } else if (message.content.startsWith('!join')) {
-        await handleJoinCommand(message);
-    } else if (message.content === '!leave') {
-        await handleLeaveCommand(message);
-    } else if (message.content.startsWith('!change_channel')) {
-        await showChannelSelection(message);
-    } else if (message.content === '!settings') {
-        await showSettings(message);
-    } else if (message.content.startsWith('!set')) {
-        const args = message.content.split(' ');
-        const setting = args[1];
-        const value = args[2];
-
-        // Update the settings based on the command
-        switch (setting) {
-            case 'MIN_DURATION':
-                MIN_DURATION = parseFloat(value);
-                message.reply(`Minimal Speech Duration set to ${MIN_DURATION}`);
-                break;
-            case 'SAMPLE_RATE':
-                SAMPLE_RATE = parseInt(value);
-                message.reply(`Sample Rate set to ${SAMPLE_RATE}`);
-                break;
-            case 'CHANNELS':
-                CHANNELS = parseInt(value);
-                message.reply(`Audio Channels Count set to ${CHANNELS}`);
-                break;
-            case 'SILENCE_DURATION':
-                SILENCE_DURATION = parseInt(value);
-                message.reply(`Silence Duration set to ${SILENCE_DURATION}`);
-                break;
-            case 'temperature':
-                WHISPER_SETTINGS.temperature = parseFloat(value);
-                message.reply(`Whisper Temperature set to ${WHISPER_SETTINGS.temperature}`);
-                break;
-            case 'language':
-                WHISPER_SETTINGS.language = value;
-                message.reply(`Whisper Language set to ${WHISPER_SETTINGS.language}`);
-                break;
-            // Add other settings as needed
-            default:
-                message.reply('Unknown setting.');
-        }
-    }
-}
-
 // Functions to handle voice channel interactions
 async function joinVoice(member) {
     if (!member.voice.channel) {
@@ -164,7 +124,7 @@ async function joinVoice(member) {
     receiver.speaking.on('start', async userId => {
         const user = await member.client.users.fetch(userId);
 
-        // Найдем текстовый канал после подключения к голосовому каналу
+        // Find the text channel after connecting to the voice channel
         if (selectedTextChannelName) {
             selectedTextChannel = member.guild.channels.cache.find(channel => channel.name === selectedTextChannelName && channel.type === ChannelType.GuildText);
         }
