@@ -2,6 +2,11 @@
 
 This is a Discord bot that joins a voice channel, listens to the conversation, and posts transcriptions in a selected text channel using OpenAI's Whisper API.
 
+## Version
+
+Current version: v1.1.0
+
+
 ## Features
 
 - Joins a voice channel and listens to conversations.
