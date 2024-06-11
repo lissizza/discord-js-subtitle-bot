@@ -20,14 +20,14 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-let MIN_DURATION = 0.7; // minimum duration in seconds
+let MIN_DURATION = 1.0; // minimum duration in seconds
 let SAMPLE_RATE = 48000; // audio sample rate
 let CHANNELS = 1; // number of audio channels
 let BYTES_PER_SAMPLE = 2; // bytes per sample
 let SILENCE_DURATION = 100; // duration of silence to end the recording
 
 const WHISPER_SETTINGS = {
-    temperature: 0.1, // Lower temperature reduces creativity and ensures more deterministic output
+    temperature: 0.9, // Lower temperature reduces creativity and ensures more deterministic output
     language: 'en', // Specify the language, if known, to improve accuracy
     suppress_tokens: '-1' // Suppress tokens to avoid common issues, '-1' disables this feature
 };
@@ -52,7 +52,7 @@ async function onReady() {
     console.log(`Logged in as ${client.user.tag}`);
     const guilds = client.guilds.cache;
     guilds.forEach(async (guild) => {
-        await sendChannelSelectionMessage(guild, startChannelName);
+        await sendInitialMessage(guild, startChannelName);
     });
 }
 
@@ -60,19 +60,23 @@ async function onReady() {
 async function onInteractionCreate(interaction) {
     if (!interaction.isButton() && !interaction.isModalSubmit()) return;
 
-    if (interaction.isButton() && interaction.customId.startsWith('select_')) {
-        await handleChannelSelection(interaction);
-    } else if (interaction.customId === 'join') {
-        await handleJoin(interaction);
-    } else if (interaction.customId === 'leave') {
-        await handleLeave(interaction);
-    } else if (interaction.customId.startsWith('update_')) {
-        const setting = interaction.customId.split('_')[1];
-        const modal = createSettingsModal(setting);
-        await interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit()) {
+    if (interaction.isButton()) {
+        if (interaction.customId === 'join') {
+            await handleJoin(interaction);
+        } else if (interaction.customId === 'leave') {
+            await handleLeave(interaction);
+        } else if (interaction.customId === 'change_channel') {
+            await showChannelSelection(interaction);
+        } else if (interaction.customId === 'settings') {
+            await showSettings(interaction);
+        } else if (interaction.customId.startsWith('select_')) {
+            await handleChannelSelection(interaction);
+        } else if (interaction.customId.startsWith('update_')) {
+            const setting = interaction.customId.split('_')[1];
+            const modal = createSettingsModal(setting);
+            await interaction.showModal(modal);
+        }
+    } else if (interaction.isModalSubmit()) {
         const setting = interaction.customId.split('_')[1];
         const newValue = interaction.fields.getTextInputValue(`input_${setting}`);
 
@@ -80,27 +84,27 @@ async function onInteractionCreate(interaction) {
         switch (setting) {
             case 'MIN_DURATION':
                 MIN_DURATION = parseFloat(newValue);
-                await interaction.reply({ content: `MIN_DURATION set to ${MIN_DURATION}`, ephemeral: true });
+                await interaction.reply({ content: `Minimal Speech Duration set to ${MIN_DURATION}`, ephemeral: true });
                 break;
             case 'SAMPLE_RATE':
                 SAMPLE_RATE = parseInt(newValue);
-                await interaction.reply({ content: `SAMPLE_RATE set to ${SAMPLE_RATE}`, ephemeral: true });
+                await interaction.reply({ content: `Sample Rate set to ${SAMPLE_RATE}`, ephemeral: true });
                 break;
             case 'CHANNELS':
                 CHANNELS = parseInt(newValue);
-                await interaction.reply({ content: `CHANNELS set to ${CHANNELS}`, ephemeral: true });
+                await interaction.reply({ content: `Channels set to ${CHANNELS}`, ephemeral: true });
                 break;
             case 'SILENCE_DURATION':
                 SILENCE_DURATION = parseInt(newValue);
-                await interaction.reply({ content: `SILENCE_DURATION set to ${SILENCE_DURATION}`, ephemeral: true });
+                await interaction.reply({ content: `Silence Duration set to ${SILENCE_DURATION}`, ephemeral: true });
                 break;
             case 'temperature':
                 WHISPER_SETTINGS.temperature = parseFloat(newValue);
-                await interaction.reply({ content: `Whisper temperature set to ${WHISPER_SETTINGS.temperature}`, ephemeral: true });
+                await interaction.reply({ content: `Whisper Temperature set to ${WHISPER_SETTINGS.temperature}`, ephemeral: true });
                 break;
             case 'language':
                 WHISPER_SETTINGS.language = newValue;
-                await interaction.reply({ content: `Whisper language set to ${WHISPER_SETTINGS.language}`, ephemeral: true });
+                await interaction.reply({ content: `Whisper Language set to ${WHISPER_SETTINGS.language}`, ephemeral: true });
                 break;
             // Add other settings as needed
             default:
@@ -110,10 +114,16 @@ async function onInteractionCreate(interaction) {
 }
 
 async function onMessageCreate(message) {
-    if (message.content.startsWith('!join')) {
+    if (message.content === '!menu') {
+        await sendInitialMessage(message.guild, startChannelName);
+    } else if (message.content.startsWith('!join')) {
         await handleJoinCommand(message);
     } else if (message.content === '!leave') {
         await handleLeaveCommand(message);
+    } else if (message.content.startsWith('!change_channel')) {
+        await showChannelSelection(message);
+    } else if (message.content === '!settings') {
+        await showSettings(message);
     } else if (message.content.startsWith('!set')) {
         const args = message.content.split(' ');
         const setting = args[1];
@@ -123,27 +133,27 @@ async function onMessageCreate(message) {
         switch (setting) {
             case 'MIN_DURATION':
                 MIN_DURATION = parseFloat(value);
-                message.reply(`MIN_DURATION set to ${MIN_DURATION}`);
+                message.reply(`Minimal Speech Duration set to ${MIN_DURATION}`);
                 break;
             case 'SAMPLE_RATE':
                 SAMPLE_RATE = parseInt(value);
-                message.reply(`SAMPLE_RATE set to ${SAMPLE_RATE}`);
+                message.reply(`Sample Rate set to ${SAMPLE_RATE}`);
                 break;
             case 'CHANNELS':
                 CHANNELS = parseInt(value);
-                message.reply(`CHANNELS set to ${CHANNELS}`);
+                message.reply(`Channels set to ${CHANNELS}`);
                 break;
             case 'SILENCE_DURATION':
                 SILENCE_DURATION = parseInt(value);
-                message.reply(`SILENCE_DURATION set to ${SILENCE_DURATION}`);
+                message.reply(`Silence Duration set to ${SILENCE_DURATION}`);
                 break;
             case 'temperature':
                 WHISPER_SETTINGS.temperature = parseFloat(value);
-                message.reply(`Whisper temperature set to ${WHISPER_SETTINGS.temperature}`);
+                message.reply(`Whisper Temperature set to ${WHISPER_SETTINGS.temperature}`);
                 break;
             case 'language':
                 WHISPER_SETTINGS.language = value;
-                message.reply(`Whisper language set to ${WHISPER_SETTINGS.language}`);
+                message.reply(`Whisper Language set to ${WHISPER_SETTINGS.language}`);
                 break;
             // Add other settings as needed
             default:
@@ -229,7 +239,6 @@ async function handleChannelSelection(interaction) {
 
     if (selectedTextChannel) {
         await interaction.reply({ content: `Selected channel: ${selectedTextChannel.name}`, ephemeral: true });
-        joinVoice(interaction.member);
     } else {
         await interaction.reply({ content: 'Channel selection failed.', ephemeral: true });
     }
@@ -273,8 +282,40 @@ async function handleLeaveCommand(message) {
 }
 
 // Utility functions
-async function sendChannelSelectionMessage(guild, channelName) {
-    const textChannels = guild.channels.cache.filter(channel => channel.type === ChannelType.GuildText);
+async function sendInitialMessage(guild, channelName) {
+    const targetChannel = guild.channels.cache.find(channel => channel.name === channelName && channel.type === ChannelType.GuildText) ||
+        guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
+
+    if (targetChannel) {
+        selectedTextChannel = targetChannel;
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('join')
+                .setLabel('Join')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId('leave')
+                .setLabel('Leave')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId('change_channel')
+                .setLabel('Change Channel')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId('settings')
+                .setLabel('Settings')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+        await targetChannel.send({ content: 'Bot is ready. Select an action:', components: [row] });
+    } else {
+        console.log('Target channel not found');
+    }
+}
+
+async function showChannelSelection(interaction) {
+    const textChannels = interaction.guild.channels.cache.filter(channel => channel.type === ChannelType.GuildText);
     const rows = [];
 
     let row = new ActionRowBuilder();
@@ -296,26 +337,84 @@ async function sendChannelSelectionMessage(guild, channelName) {
         rows.push(row);
     }
 
-    // Add the leave button in a new row
-    const leaveButtonRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('leave')
-            .setLabel('Leave')
-            .setStyle(ButtonStyle.Danger)
-    );
-
-    const targetChannel = guild.channels.cache.find(channel => channel.name === channelName && channel.type === ChannelType.GuildText) ||
-        guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
-
-    if (targetChannel) {
-        for (const row of rows) {
-            await targetChannel.send({ content: 'Select the text channel to post transcriptions:', components: [row] });
-        }
-        await targetChannel.send({ content: 'You can also disconnect the bot:', components: [leaveButtonRow] });
-    } else {
-        console.log('Target channel not found');
-    }
+    await interaction.reply({ content: 'Select the text channel to post transcriptions:', components: rows, ephemeral: true });
 }
+
+async function showSettings(interaction) {
+    const components = [
+        new ButtonBuilder()
+            .setCustomId('update_MIN_DURATION')
+            .setLabel('Minimal Speech Duration')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_SAMPLE_RATE')
+            .setLabel('Sample Rate')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_CHANNELS')
+            .setLabel('Channels')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_SILENCE_DURATION')
+            .setLabel('Silence Duration')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_temperature')
+            .setLabel('Whisper Temperature')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_language')
+            .setLabel('Whisper Language')
+            .setStyle(ButtonStyle.Primary)
+    ];
+
+    const rows = [];
+    for (let i = 0; i < components.length; i += 5) {
+        const row = new ActionRowBuilder().addComponents(components.slice(i, i + 5));
+        rows.push(row);
+    }
+
+    await interaction.reply({ content: 'Select a setting to update:', components: rows, ephemeral: true });
+}
+
+// Create a modal to input settings
+const createSettingsModal = (setting) => {
+    let currentValue = '';
+    switch (setting) {
+        case 'MIN_DURATION':
+            currentValue = MIN_DURATION.toString();
+            break;
+        case 'SAMPLE_RATE':
+            currentValue = SAMPLE_RATE.toString();
+            break;
+        case 'CHANNELS':
+            currentValue = CHANNELS.toString();
+            break;
+        case 'SILENCE_DURATION':
+            currentValue = SILENCE_DURATION.toString();
+            break;
+        case 'temperature':
+            currentValue = WHISPER_SETTINGS.temperature.toString();
+            break;
+        case 'language':
+            currentValue = WHISPER_SETTINGS.language;
+            break;
+        // Add other settings as needed
+    }
+
+    return new ModalBuilder()
+        .setCustomId(`settings_${setting}`)
+        .setTitle(`Update ${setting}`)
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId(`input_${setting}`)
+                    .setLabel(`New value for ${setting}`)
+                    .setValue(currentValue)
+                    .setStyle(TextInputStyle.Short)
+            )
+        );
+};
 
 async function sendTranscriptionRequest(audioBuffer, user) {
     const form = new FormData();
@@ -354,74 +453,6 @@ async function sendTranscriptionRequest(audioBuffer, user) {
         console.error('Error transcribing audio:', error.response ? error.response.data : error.message);
     }
 }
-
-// Create a modal to input settings
-const createSettingsModal = (setting) => {
-    return new ModalBuilder()
-        .setCustomId(`settings_${setting}`)
-        .setTitle(`Update ${setting}`)
-        .addComponents(
-            new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                    .setCustomId(`input_${setting}`)
-                    .setLabel(`New value for ${setting}`)
-                    .setStyle(TextInputStyle.Short)
-            )
-        );
-};
-
-// Send a message with buttons to update settings
-const sendSettingsMessage = async (channel) => {
-    const components = [
-        new ButtonBuilder()
-            .setCustomId('update_MIN_DURATION')
-            .setLabel('Update MIN_DURATION')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_SAMPLE_RATE')
-            .setLabel('Update SAMPLE_RATE')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_CHANNELS')
-            .setLabel('Update CHANNELS')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_SILENCE_DURATION')
-            .setLabel('Update SILENCE_DURATION')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_temperature')
-            .setLabel('Update Whisper Temperature')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_language')
-            .setLabel('Update Whisper Language')
-            .setStyle(ButtonStyle.Primary)
-    ];
-
-    const rows = [];
-    for (let i = 0; i < components.length; i += 5) {
-        const row = new ActionRowBuilder().addComponents(components.slice(i, i + 5));
-        rows.push(row);
-    }
-
-    await channel.send({ content: 'Select a setting to update:', components: rows });
-};
-
-// Example usage
-client.on('ready', () => {
-    const guilds = client.guilds.cache;
-    guilds.forEach(async (guild) => {
-        const targetChannel = guild.channels.cache.find(channel => channel.name === startChannelName && channel.type === ChannelType.GuildText) ||
-            guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
-
-        if (targetChannel) {
-            await sendSettingsMessage(targetChannel);
-        } else {
-            console.log('Target channel not found in guild:', guild.name);
-        }
-    });
-});
 
 // Start the bot
 setupBot();
