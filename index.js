@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType, generateDependencyReport } = require('@discordjs/voice');
 const prism = require('prism-media');
 const { PassThrough } = require('stream');
@@ -20,11 +20,11 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-const MIN_DURATION = 1.0; // minimum duration in seconds
-const SAMPLE_RATE = 48000; // audio sample rate
-const CHANNELS = 1; // number of audio channels
-const BYTES_PER_SAMPLE = 2; // bytes per sample
-const SILENCE_DURATION = 100; // duration of silence to end the recording
+let MIN_DURATION = 0.7; // minimum duration in seconds
+let SAMPLE_RATE = 48000; // audio sample rate
+let CHANNELS = 1; // number of audio channels
+let BYTES_PER_SAMPLE = 2; // bytes per sample
+let SILENCE_DURATION = 100; // duration of silence to end the recording
 
 const WHISPER_SETTINGS = {
     temperature: 0.1, // Lower temperature reduces creativity and ensures more deterministic output
@@ -34,6 +34,10 @@ const WHISPER_SETTINGS = {
 
 let selectedTextChannel = null;
 let connection = null;
+
+// Получение аргумента канала из командной строки
+const args = process.argv.slice(2);
+const startChannelName = args.length > 0 ? args[0] : 'general';
 
 // Functions to setup the bot
 async function setupBot() {
@@ -48,20 +52,60 @@ async function onReady() {
     console.log(`Logged in as ${client.user.tag}`);
     const guilds = client.guilds.cache;
     guilds.forEach(async (guild) => {
-        await sendChannelSelectionMessage(guild);
+        await sendChannelSelectionMessage(guild, startChannelName);
     });
 }
 
 // Functions to handle interactions and messages
 async function onInteractionCreate(interaction) {
-    if (!interaction.isButton()) return;
+    if (!interaction.isButton() && !interaction.isModalSubmit()) return;
 
-    if (interaction.customId.startsWith('select_')) {
+    if (interaction.isButton() && interaction.customId.startsWith('select_')) {
         await handleChannelSelection(interaction);
     } else if (interaction.customId === 'join') {
         await handleJoin(interaction);
     } else if (interaction.customId === 'leave') {
         await handleLeave(interaction);
+    } else if (interaction.customId.startsWith('update_')) {
+        const setting = interaction.customId.split('_')[1];
+        const modal = createSettingsModal(setting);
+        await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit()) {
+        const setting = interaction.customId.split('_')[1];
+        const newValue = interaction.fields.getTextInputValue(`input_${setting}`);
+
+        // Update the settings based on the interaction
+        switch (setting) {
+            case 'MIN_DURATION':
+                MIN_DURATION = parseFloat(newValue);
+                await interaction.reply({ content: `MIN_DURATION set to ${MIN_DURATION}`, ephemeral: true });
+                break;
+            case 'SAMPLE_RATE':
+                SAMPLE_RATE = parseInt(newValue);
+                await interaction.reply({ content: `SAMPLE_RATE set to ${SAMPLE_RATE}`, ephemeral: true });
+                break;
+            case 'CHANNELS':
+                CHANNELS = parseInt(newValue);
+                await interaction.reply({ content: `CHANNELS set to ${CHANNELS}`, ephemeral: true });
+                break;
+            case 'SILENCE_DURATION':
+                SILENCE_DURATION = parseInt(newValue);
+                await interaction.reply({ content: `SILENCE_DURATION set to ${SILENCE_DURATION}`, ephemeral: true });
+                break;
+            case 'temperature':
+                WHISPER_SETTINGS.temperature = parseFloat(newValue);
+                await interaction.reply({ content: `Whisper temperature set to ${WHISPER_SETTINGS.temperature}`, ephemeral: true });
+                break;
+            case 'language':
+                WHISPER_SETTINGS.language = newValue;
+                await interaction.reply({ content: `Whisper language set to ${WHISPER_SETTINGS.language}`, ephemeral: true });
+                break;
+            // Add other settings as needed
+            default:
+                await interaction.reply({ content: 'Unknown setting.', ephemeral: true });
+        }
     }
 }
 
@@ -70,6 +114,41 @@ async function onMessageCreate(message) {
         await handleJoinCommand(message);
     } else if (message.content === '!leave') {
         await handleLeaveCommand(message);
+    } else if (message.content.startsWith('!set')) {
+        const args = message.content.split(' ');
+        const setting = args[1];
+        const value = args[2];
+
+        // Update the settings based on the command
+        switch (setting) {
+            case 'MIN_DURATION':
+                MIN_DURATION = parseFloat(value);
+                message.reply(`MIN_DURATION set to ${MIN_DURATION}`);
+                break;
+            case 'SAMPLE_RATE':
+                SAMPLE_RATE = parseInt(value);
+                message.reply(`SAMPLE_RATE set to ${SAMPLE_RATE}`);
+                break;
+            case 'CHANNELS':
+                CHANNELS = parseInt(value);
+                message.reply(`CHANNELS set to ${CHANNELS}`);
+                break;
+            case 'SILENCE_DURATION':
+                SILENCE_DURATION = parseInt(value);
+                message.reply(`SILENCE_DURATION set to ${SILENCE_DURATION}`);
+                break;
+            case 'temperature':
+                WHISPER_SETTINGS.temperature = parseFloat(value);
+                message.reply(`Whisper temperature set to ${WHISPER_SETTINGS.temperature}`);
+                break;
+            case 'language':
+                WHISPER_SETTINGS.language = value;
+                message.reply(`Whisper language set to ${WHISPER_SETTINGS.language}`);
+                break;
+            // Add other settings as needed
+            default:
+                message.reply('Unknown setting.');
+        }
     }
 }
 
@@ -194,16 +273,17 @@ async function handleLeaveCommand(message) {
 }
 
 // Utility functions
-async function sendChannelSelectionMessage(guild) {
+async function sendChannelSelectionMessage(guild, channelName) {
     const textChannels = guild.channels.cache.filter(channel => channel.type === ChannelType.GuildText);
     const rows = [];
-    let row = new ActionRowBuilder();
 
-    textChannels.forEach(channel => {
-        if (row.components.length >= 5) {
+    let row = new ActionRowBuilder();
+    textChannels.forEach((channel, index) => {
+        if (row.components.length === 5) {
             rows.push(row);
             row = new ActionRowBuilder();
         }
+
         row.addComponents(
             new ButtonBuilder()
                 .setCustomId(`select_${channel.id}`)
@@ -212,26 +292,28 @@ async function sendChannelSelectionMessage(guild) {
         );
     });
 
-    // If the last row has components, add it to the rows
     if (row.components.length > 0) {
         rows.push(row);
     }
 
     // Add the leave button in a new row
-    rows.push(
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('leave')
-                .setLabel('Leave')
-                .setStyle(ButtonStyle.Danger)
-        )
+    const leaveButtonRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('leave')
+            .setLabel('Leave')
+            .setStyle(ButtonStyle.Danger)
     );
 
-    const generalChannel = guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
-    if (generalChannel) {
-        await generalChannel.send({ content: 'Select the text channel to post transcriptions:', components: rows });
+    const targetChannel = guild.channels.cache.find(channel => channel.name === channelName && channel.type === ChannelType.GuildText) ||
+        guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
+
+    if (targetChannel) {
+        for (const row of rows) {
+            await targetChannel.send({ content: 'Select the text channel to post transcriptions:', components: [row] });
+        }
+        await targetChannel.send({ content: 'You can also disconnect the bot:', components: [leaveButtonRow] });
     } else {
-        console.log('Channel #general not found');
+        console.log('Target channel not found');
     }
 }
 
@@ -261,7 +343,7 @@ async function sendTranscriptionRequest(audioBuffer, user) {
             const transcription = response.data.text.trim();
             console.log(`Transcription: ${transcription}`);
             if (selectedTextChannel) {
-                selectedTextChannel.send(`${user.username}: ${transcription}`);
+                selectedTextChannel.send({ content: `${user.username}: ${transcription}`, ephemeral: true });
             } else {
                 console.log('No text channel selected for transcription.');
             }
@@ -272,6 +354,74 @@ async function sendTranscriptionRequest(audioBuffer, user) {
         console.error('Error transcribing audio:', error.response ? error.response.data : error.message);
     }
 }
+
+// Create a modal to input settings
+const createSettingsModal = (setting) => {
+    return new ModalBuilder()
+        .setCustomId(`settings_${setting}`)
+        .setTitle(`Update ${setting}`)
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId(`input_${setting}`)
+                    .setLabel(`New value for ${setting}`)
+                    .setStyle(TextInputStyle.Short)
+            )
+        );
+};
+
+// Send a message with buttons to update settings
+const sendSettingsMessage = async (channel) => {
+    const components = [
+        new ButtonBuilder()
+            .setCustomId('update_MIN_DURATION')
+            .setLabel('Update MIN_DURATION')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_SAMPLE_RATE')
+            .setLabel('Update SAMPLE_RATE')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_CHANNELS')
+            .setLabel('Update CHANNELS')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_SILENCE_DURATION')
+            .setLabel('Update SILENCE_DURATION')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_temperature')
+            .setLabel('Update Whisper Temperature')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('update_language')
+            .setLabel('Update Whisper Language')
+            .setStyle(ButtonStyle.Primary)
+    ];
+
+    const rows = [];
+    for (let i = 0; i < components.length; i += 5) {
+        const row = new ActionRowBuilder().addComponents(components.slice(i, i + 5));
+        rows.push(row);
+    }
+
+    await channel.send({ content: 'Select a setting to update:', components: rows });
+};
+
+// Example usage
+client.on('ready', () => {
+    const guilds = client.guilds.cache;
+    guilds.forEach(async (guild) => {
+        const targetChannel = guild.channels.cache.find(channel => channel.name === startChannelName && channel.type === ChannelType.GuildText) ||
+            guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
+
+        if (targetChannel) {
+            await sendSettingsMessage(targetChannel);
+        } else {
+            console.log('Target channel not found in guild:', guild.name);
+        }
+    });
+});
 
 // Start the bot
 setupBot();
