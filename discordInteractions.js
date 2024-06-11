@@ -206,21 +206,8 @@ async function handleLeave(interaction) {
 }
 
 async function handleJoinCommand(message) {
-    const args = message.content.split(' ');
-    if (args.length !== 2) {
-        message.reply('Usage: !join #channel');
-        return;
-    }
-
-    const channelName = args[1].replace('#', '').trim();
-    const textChannel = message.guild.channels.cache.find(channel => channel.name === channelName && channel.type === ChannelType.GuildText);
-    if (textChannel && textChannel.guild.id === message.guild.id) {
-        selectedTextChannelName = textChannel.name;
-        await message.reply(`Selected channel: ${selectedTextChannelName}`);
-        await joinVoice(message.member);
-    } else {
-        message.reply('Text channel not found or not on the same server.');
-    }
+    await joinVoice(message.member);
+    message.reply('Joined the voice channel.');
 }
 
 async function handleLeaveCommand(message) {

@@ -8,6 +8,7 @@ This is a Discord bot that joins a voice channel, listens to the conversation, a
 - Transcribes audio using OpenAI's Whisper API.
 - Posts transcriptions in a selected text channel.
 - Allows users to select the text channel using buttons or commands.
+- Provides a settings menu to configure transcription parameters.
 
 ## Setup
 
@@ -41,27 +42,36 @@ This is a Discord bot that joins a voice channel, listens to the conversation, a
 
 ### Running the Bot
 
-1. Start the bot:
+1. Start the bot with a specified text channel (optional):
 
    ```bash
-   npm start
+   npm start your_channel_name
    ```
 
-2. The bot will log in and send a message in the `#general` channel of each server it is part of, asking users to select a text channel for posting transcriptions.
+   If no channel is specified, the bot will post messages in the `#general` channel.
 
 ## Usage
 
 ### Commands
 
-- `!join #channel`: Selects the text channel to post transcriptions and joins the voice channel.
+- `!menu`: Displays the main menu with options to join, leave, change the text channel, and access settings.
+- `!join`: Joins the voice channel.
 - `!leave`: Leaves the voice channel.
+- `!set_text_channel`: Displays buttons to select a new text channel for transcriptions.
+- `!settings`: Displays the settings menu to configure transcription parameters.
 
 ### Buttons
 
 - **Join**: Joins the voice channel.
 - **Leave**: Leaves the voice channel.
-- **Text Channel Buttons**: Selects the text channel to post transcriptions.
-
+- **Change Text Channel**: Displays buttons to select a new text channel for transcriptions.
+- **Settings**: Displays the settings menu to configure transcription parameters.
+- **Minimal Speech Duration**: Configures the minimum duration of speech to be transcribed.
+- **Sample Rate**: Configures the audio sample rate.
+- **Audio Channels Count**: Configures the number of audio channels.
+- **Silence Duration**: Configures the duration of silence to end the recording.
+- **Whisper Temperature**: Configures the temperature parameter for the Whisper API.
+- **Whisper Language**: Configures the language parameter for the Whisper API.
 
 ## License
 
