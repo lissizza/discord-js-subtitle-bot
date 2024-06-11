@@ -186,41 +186,45 @@ async function joinVoice(member) {
     const receiver = connection.receiver;
 
     receiver.speaking.on('start', async userId => {
-        const user = await client.users.fetch(userId);
-        const audioStream = receiver.subscribe(userId, {
-            end: {
-                behavior: EndBehaviorType.AfterSilence,
-                duration: SILENCE_DURATION,
-            },
-        });
+        const user = await member.client.users.fetch(userId);
+        if (selectedTextChannel && selectedTextChannel.guild.id === member.guild.id) {
+            const audioStream = receiver.subscribe(userId, {
+                end: {
+                    behavior: EndBehaviorType.AfterSilence,
+                    duration: SILENCE_DURATION,
+                },
+            });
 
-        const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 }));
-        const wavStream = new PassThrough();
+            const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 }));
+            const wavStream = new PassThrough();
 
-        const audioBuffer = [];
-        let duration = 0;
+            const audioBuffer = [];
+            let duration = 0;
 
-        const ffmpegProcess = ffmpeg(pcmStream)
-            .inputFormat('s16le')
-            .audioFrequency(SAMPLE_RATE)
-            .audioChannels(CHANNELS)
-            .toFormat('wav')
-            .on('error', (err) => {
-                console.error('Error processing audio:', err);
-            })
-            .on('end', async () => {
-                if (duration > MIN_DURATION) {
-                    await sendTranscriptionRequest(Buffer.concat(audioBuffer), user);
-                } else {
-                    console.log('Audio is too short to transcribe.');
-                }
-            })
-            .pipe(wavStream);
+            const ffmpegProcess = ffmpeg(pcmStream)
+                .inputFormat('s16le')
+                .audioFrequency(SAMPLE_RATE)
+                .audioChannels(CHANNELS)
+                .toFormat('wav')
+                .on('error', (err) => {
+                    console.error('Error processing audio:', err);
+                })
+                .on('end', async () => {
+                    if (duration > MIN_DURATION) {
+                        await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannel, WHISPER_SETTINGS);
+                    } else {
+                        console.log('Audio is too short to transcribe.');
+                    }
+                })
+                .pipe(wavStream);
 
-        wavStream.on('data', chunk => {
-            audioBuffer.push(chunk);
-            duration += chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS);
-        });
+            wavStream.on('data', chunk => {
+                audioBuffer.push(chunk);
+                duration += chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS);
+            });
+        } else {
+            console.log('No text channel selected or not on the same server.');
+        }
     });
 }
 

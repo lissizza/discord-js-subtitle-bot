@@ -1,4 +1,9 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType } = require('discord.js');
+const {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelType,
+} = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType } = require('@discordjs/voice');
 const prism = require('prism-media');
 const { PassThrough } = require('stream');
@@ -12,9 +17,9 @@ const {
     BYTES_PER_SAMPLE,
     SILENCE_DURATION,
 } = require('./config');
-const { createSettingsModal, getSettingsValue } = require('./visualElements');
+const { createSettingsModal, getSettingsValue, createSettingsButtons } = require('./visualElements');
 
-let selectedTextChannel = null;
+let selectedTextChannelName = null; // изменено на название канала
 let connection = null;
 
 // Получение аргумента канала из командной строки
@@ -56,7 +61,7 @@ async function handleInteractionCreate(interaction) {
                 break;
             case 'CHANNELS':
                 CHANNELS = parseInt(newValue);
-                await interaction.reply({ content: `Channels set to ${CHANNELS}`, ephemeral: true });
+                await interaction.reply({ content: `Audio Channels Count set to ${CHANNELS}`, ephemeral: true });
                 break;
             case 'SILENCE_DURATION':
                 SILENCE_DURATION = parseInt(newValue);
@@ -105,7 +110,7 @@ async function handleMessageCreate(message) {
                 break;
             case 'CHANNELS':
                 CHANNELS = parseInt(value);
-                message.reply(`Channels set to ${CHANNELS}`);
+                message.reply(`Audio Channels Count set to ${CHANNELS}`);
                 break;
             case 'SILENCE_DURATION':
                 SILENCE_DURATION = parseInt(value);
@@ -151,40 +156,50 @@ async function joinVoice(member) {
 
     receiver.speaking.on('start', async userId => {
         const user = await member.client.users.fetch(userId);
-        const audioStream = receiver.subscribe(userId, {
-            end: {
-                behavior: EndBehaviorType.AfterSilence,
-                duration: SILENCE_DURATION,
-            },
-        });
 
-        const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 }));
-        const wavStream = new PassThrough();
+        // Найдем текстовый канал после подключения к голосовому каналу
+        if (selectedTextChannelName) {
+            selectedTextChannel = member.guild.channels.cache.find(channel => channel.name === selectedTextChannelName && channel.type === ChannelType.GuildText);
+        }
 
-        const audioBuffer = [];
-        let duration = 0;
+        if (selectedTextChannel) {
+            const audioStream = receiver.subscribe(userId, {
+                end: {
+                    behavior: EndBehaviorType.AfterSilence,
+                    duration: SILENCE_DURATION,
+                },
+            });
 
-        const ffmpegProcess = ffmpeg(pcmStream)
-            .inputFormat('s16le')
-            .audioFrequency(SAMPLE_RATE)
-            .audioChannels(CHANNELS)
-            .toFormat('wav')
-            .on('error', (err) => {
-                console.error('Error processing audio:', err);
-            })
-            .on('end', async () => {
-                if (duration > MIN_DURATION) {
-                    await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannel, WHISPER_SETTINGS);
-                } else {
-                    console.log('Audio is too short to transcribe.');
-                }
-            })
-            .pipe(wavStream);
+            const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 }));
+            const wavStream = new PassThrough();
 
-        wavStream.on('data', chunk => {
-            audioBuffer.push(chunk);
-            duration += chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS);
-        });
+            const audioBuffer = [];
+            let duration = 0;
+
+            const ffmpegProcess = ffmpeg(pcmStream)
+                .inputFormat('s16le')
+                .audioFrequency(SAMPLE_RATE)
+                .audioChannels(CHANNELS)
+                .toFormat('wav')
+                .on('error', (err) => {
+                    console.error('Error processing audio:', err);
+                })
+                .on('end', async () => {
+                    if (duration > MIN_DURATION) {
+                        await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannel, WHISPER_SETTINGS, member.guild);
+                    } else {
+                        console.log('Audio is too short to transcribe.');
+                    }
+                })
+                .pipe(wavStream);
+
+            wavStream.on('data', chunk => {
+                audioBuffer.push(chunk);
+                duration += chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS);
+            });
+        } else {
+            console.log('No text channel selected or not on the same server.');
+        }
     });
 }
 
@@ -199,10 +214,11 @@ function leaveVoice(guildId) {
 // Functions to handle specific actions
 async function handleChannelSelection(interaction) {
     const channelId = interaction.customId.split('_')[1];
-    selectedTextChannel = interaction.guild.channels.cache.get(channelId);
+    const selectedChannel = interaction.guild.channels.cache.get(channelId);
 
-    if (selectedTextChannel) {
-        await interaction.reply({ content: `Selected channel: ${selectedTextChannel.name}`, ephemeral: true });
+    if (selectedChannel) {
+        selectedTextChannelName = selectedChannel.name;
+        await interaction.reply({ content: `Selected channel: ${selectedChannel.name}`, ephemeral: true });
     } else {
         await interaction.reply({ content: 'Channel selection failed.', ephemeral: true });
     }
@@ -231,12 +247,12 @@ async function handleJoinCommand(message) {
 
     const channelName = args[1].replace('#', '').trim();
     const textChannel = message.guild.channels.cache.find(channel => channel.name === channelName && channel.type === ChannelType.GuildText);
-    if (textChannel) {
-        selectedTextChannel = textChannel;
-        await message.reply(`Selected channel: ${selectedTextChannel.name}`);
+    if (textChannel && textChannel.guild.id === message.guild.id) {
+        selectedTextChannelName = textChannel.name;
+        await message.reply(`Selected channel: ${selectedTextChannelName}`);
         joinVoice(message.member);
     } else {
-        message.reply('Text channel not found.');
+        message.reply('Text channel not found or not on the same server.');
     }
 }
 
@@ -251,7 +267,7 @@ async function sendInitialMessage(guild) {
         guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
 
     if (targetChannel) {
-        selectedTextChannel = targetChannel;
+        selectedTextChannelName = targetChannel.name;
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -264,7 +280,7 @@ async function sendInitialMessage(guild) {
                 .setStyle(ButtonStyle.Danger),
             new ButtonBuilder()
                 .setCustomId('change_channel')
-                .setLabel('Change Channel')
+                .setLabel('Change Text Channel')
                 .setStyle(ButtonStyle.Secondary),
             new ButtonBuilder()
                 .setCustomId('settings')
@@ -305,39 +321,7 @@ async function showChannelSelection(interaction) {
 }
 
 async function showSettings(interaction) {
-    const components = [
-        new ButtonBuilder()
-            .setCustomId('update_MIN_DURATION')
-            .setLabel('Minimal Speech Duration')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_SAMPLE_RATE')
-            .setLabel('Sample Rate')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_CHANNELS')
-            .setLabel('Channels')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_SILENCE_DURATION')
-            .setLabel('Silence Duration')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_temperature')
-            .setLabel('Whisper Temperature')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('update_language')
-            .setLabel('Whisper Language')
-            .setStyle(ButtonStyle.Primary)
-    ];
-
-    const rows = [];
-    for (let i = 0; i < components.length; i += 5) {
-        const row = new ActionRowBuilder().addComponents(components.slice(i, i + 5));
-        rows.push(row);
-    }
-
+    const rows = createSettingsButtons();
     await interaction.reply({ content: 'Select a setting to update:', components: rows, ephemeral: true });
 }
 
