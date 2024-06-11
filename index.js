@@ -20,7 +20,7 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-const MIN_DURATION = 0.7; // minimum duration in seconds
+const MIN_DURATION = 1.0; // minimum duration in seconds
 const SAMPLE_RATE = 48000; // audio sample rate
 const CHANNELS = 1; // number of audio channels
 const BYTES_PER_SAMPLE = 2; // bytes per sample
