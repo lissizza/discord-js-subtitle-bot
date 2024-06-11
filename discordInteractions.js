@@ -279,6 +279,20 @@ async function showSettings(interaction) {
     await interaction.reply({ content: 'Select a setting to update:', components: rows, ephemeral: true });
 }
 
+async function handleMessageCreate(message) {
+    if (message.content === '!menu') {
+        await sendInitialMessage(message.guild);
+    } else if (message.content === '!join') {
+        await handleJoinCommand(message);
+    } else if (message.content === '!leave') {
+        await handleLeaveCommand(message);
+    } else if (message.content === '!set_text_channel') {
+        await showChannelSelection(message);
+    } else if (message.content === '!settings') {
+        await showSettings(message);
+    }
+}
+
 module.exports = {
     handleInteractionCreate,
     handleMessageCreate,
