@@ -1,4 +1,3 @@
-const { ChannelType } = require('discord.js');
 const { joinVoice, leaveVoice } = require('./audioProcessing');
 const {
     WHISPER_SETTINGS,
@@ -15,6 +14,9 @@ const {
     createInitialMenuButtons,
     createChannelSelectionMenu,
     createUserSelectionMenu,
+    showChannelSelectionMenu,
+    showUserSelectionMenu,
+    showSettings,
 } = require('./visualElements');
 
 let selectedTextChannels = [];
@@ -131,23 +133,6 @@ async function handleLeaveCommand(message) {
 async function sendInitialMessage(channel) {
     const row = createInitialMenuButtons();
     await channel.send({ content: 'Bot is ready. Select an action:', components: [row] });
-}
-
-async function showChannelSelectionMenu(interaction) {
-    const textChannels = interaction.guild.channels.cache.filter(channel => channel.type === ChannelType.GuildText);
-    const row = createChannelSelectionMenu(textChannels);
-    await interaction.reply({ content: 'Select the text channel to post transcriptions:', components: [row], ephemeral: true });
-}
-
-async function showUserSelectionMenu(interaction) {
-    const members = interaction.guild.members.cache.filter(member => !member.user.bot);
-    const row = createUserSelectionMenu(members);
-    await interaction.reply({ content: 'Select the user to send transcriptions to:', components: [row], ephemeral: true });
-}
-
-async function showSettings(interaction) {
-    const rows = createSettingsButtons();
-    await interaction.reply({ content: 'Select a setting to update:', components: rows, ephemeral: true });
 }
 
 async function handleChannelSelection(interaction) {

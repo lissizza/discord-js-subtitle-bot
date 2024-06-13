@@ -1,9 +1,19 @@
 const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const { WHISPER_SETTINGS, MIN_DURATION, SAMPLE_RATE, CHANNELS, SILENCE_DURATION, BYTES_PER_SAMPLE } = require('./config');
 
+const SETTINGS = {
+    MIN_DURATION: 'Minimal Speech Duration',
+    SAMPLE_RATE: 'Sample Rate',
+    CHANNELS: 'Audio Channels Count',
+    SILENCE_DURATION: 'Silence Duration',
+    BYTES_PER_SAMPLE: 'Bytes Per Sample',
+    temperature: 'Whisper Temperature',
+    language: 'Whisper Language',
+};
+
 // Create a modal to input settings
 const createSettingsModal = (setting, currentValue) => {
-    let title = getSettingsTitle(setting);
+    let title = SETTINGS[setting];
 
     return new ModalBuilder()
         .setCustomId(`settings_${setting}`)
@@ -17,28 +27,6 @@ const createSettingsModal = (setting, currentValue) => {
                     .setStyle(TextInputStyle.Short)
             )
         );
-};
-
-// Get title for settings
-const getSettingsTitle = (setting) => {
-    switch (setting) {
-        case 'MIN_DURATION':
-            return 'Minimal Speech Duration';
-        case 'SAMPLE_RATE':
-            return 'Sample Rate';
-        case 'CHANNELS':
-            return 'Audio Channels Count';
-        case 'SILENCE_DURATION':
-            return 'Silence Duration';
-        case 'BYTES_PER_SAMPLE':
-            return 'Bytes Per Sample';
-        case 'temperature':
-            return 'Whisper Temperature';
-        case 'language':
-            return 'Whisper Language';
-        default:
-            return setting;
-    }
 };
 
 const getSettingsValue = (setting) => {
@@ -65,20 +53,10 @@ const getSettingsValue = (setting) => {
 
 // Create buttons for settings
 const createSettingsButtons = () => {
-    const settings = [
-        { id: 'MIN_DURATION', label: 'Minimal Speech Duration' },
-        { id: 'SAMPLE_RATE', label: 'Sample Rate' },
-        { id: 'CHANNELS', label: 'Audio Channels Count' },
-        { id: 'SILENCE_DURATION', label: 'Silence Duration' },
-        { id: 'BYTES_PER_SAMPLE', label: 'Bytes Per Sample' },
-        { id: 'temperature', label: 'Whisper Temperature' },
-        { id: 'language', label: 'Whisper Language' },
-    ];
-
-    const components = settings.map(setting => 
+    const components = Object.keys(SETTINGS).map(setting => 
         new ButtonBuilder()
-            .setCustomId(`update_${setting.id}`)
-            .setLabel(setting.label)
+            .setCustomId(`update_${setting}`)
+            .setLabel(SETTINGS[setting])
             .setStyle(ButtonStyle.Primary)
     );
 
@@ -144,6 +122,23 @@ const createUserSelectionMenu = (members) => {
     );
 };
 
+const showChannelSelectionMenu = async (interaction) => {
+    const textChannels = interaction.guild.channels.cache.filter(channel => channel.type === ChannelType.GuildText);
+    const row = createChannelSelectionMenu(textChannels);
+    await interaction.reply({ content: 'Select the text channel to post transcriptions:', components: [row], ephemeral: true });
+};
+
+const showUserSelectionMenu = async (interaction) => {
+    const members = interaction.guild.members.cache.filter(member => !member.user.bot);
+    const row = createUserSelectionMenu(members);
+    await interaction.reply({ content: 'Select the user to send transcriptions to:', components: [row], ephemeral: true });
+};
+
+const showSettings = async (interaction) => {
+    const rows = createSettingsButtons();
+    await interaction.reply({ content: 'Select a setting to update:', components: rows, ephemeral: true });
+};
+
 module.exports = {
     createSettingsModal,
     getSettingsValue,
@@ -151,4 +146,7 @@ module.exports = {
     createInitialMenuButtons,
     createChannelSelectionMenu,
     createUserSelectionMenu,
+    showChannelSelectionMenu,
+    showUserSelectionMenu,
+    showSettings,
 };
