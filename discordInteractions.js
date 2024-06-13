@@ -3,10 +3,7 @@ const { WHISPER_SETTINGS, AUDIO_SETTINGS } = require('./config');
 const {
     createSettingsModal,
     getSettingsValue,
-    createSettingsButtons,
     createInitialMenuButtons,
-    createChannelSelectionMenu,
-    createUserSelectionMenu,
     showChannelSelectionMenu,
     showUserSelectionMenu,
     showSettings,

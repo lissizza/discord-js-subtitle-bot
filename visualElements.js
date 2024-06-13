@@ -140,8 +140,6 @@ module.exports = {
     getSettingsValue,
     createSettingsButtons,
     createInitialMenuButtons,
-    createChannelSelectionMenu,
-    createUserSelectionMenu,
     showChannelSelectionMenu,
     showUserSelectionMenu,
     showSettings,

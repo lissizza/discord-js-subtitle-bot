@@ -3,7 +3,7 @@ const prism = require('prism-media');
 const { PassThrough } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const { sendTranscriptionRequest } = require('./whisperSettings');
-const { AUDIO_SETTINGS } = require('./config');
+const { AUDIO_SETTINGS, WHISPER_SETTINGS } = require('./config');
 
 let connection = null;
 
@@ -60,7 +60,7 @@ async function joinVoice(member, selectedTextChannels) {
                 })
                 .on('end', async () => {
                     if (duration > AUDIO_SETTINGS.MIN_DURATION) {
-                        await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannels, AUDIO_SETTINGS);
+                        await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannels, WHISPER_SETTINGS);
                     } else {
                         console.log('Audio is too short to transcribe.');
                     }
