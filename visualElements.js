@@ -1,5 +1,5 @@
 const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
-const { WHISPER_SETTINGS, MIN_DURATION, SAMPLE_RATE, CHANNELS, SILENCE_DURATION } = require('./config');
+const { WHISPER_SETTINGS, MIN_DURATION, SAMPLE_RATE, CHANNELS, SILENCE_DURATION, BYTES_PER_SAMPLE } = require('./config');
 
 // Create a modal to input settings
 const createSettingsModal = (setting, currentValue) => {
@@ -30,6 +30,8 @@ const getSettingsTitle = (setting) => {
             return 'Audio Channels Count';
         case 'SILENCE_DURATION':
             return 'Silence Duration';
+        case 'BYTES_PER_SAMPLE':
+            return 'Bytes Per Sample';
         case 'temperature':
             return 'Whisper Temperature';
         case 'language':
@@ -43,22 +45,18 @@ const getSettingsValue = (setting) => {
     console.log(`Getting value for setting: ${setting}`);
     switch (setting) {
         case 'MIN_DURATION':
-            console.log(`Getting value for MIN_DURATION: ${MIN_DURATION}`);
             return MIN_DURATION.toString();
         case 'SAMPLE_RATE':
-            console.log(`Getting value for SAMPLE_RATE: ${SAMPLE_RATE}`);
             return SAMPLE_RATE.toString();
         case 'CHANNELS':
-            console.log(`Getting value for CHANNELS: ${CHANNELS}`);
             return CHANNELS.toString();
         case 'SILENCE_DURATION':
-            console.log(`Getting value for SILENCE_DURATION: ${SILENCE_DURATION}`);
             return SILENCE_DURATION.toString();
+        case 'BYTES_PER_SAMPLE':
+            return BYTES_PER_SAMPLE.toString();
         case 'temperature':
-            console.log(`Getting value for temperature: ${WHISPER_SETTINGS.temperature}`);
             return WHISPER_SETTINGS.temperature.toString();
         case 'language':
-            console.log(`Getting value for language: ${WHISPER_SETTINGS.language}`);
             return WHISPER_SETTINGS.language;
         default:
             return '';
@@ -72,6 +70,7 @@ const createSettingsButtons = () => {
         { id: 'SAMPLE_RATE', label: 'Sample Rate' },
         { id: 'CHANNELS', label: 'Audio Channels Count' },
         { id: 'SILENCE_DURATION', label: 'Silence Duration' },
+        { id: 'BYTES_PER_SAMPLE', label: 'Bytes Per Sample' },
         { id: 'temperature', label: 'Whisper Temperature' },
         { id: 'language', label: 'Whisper Language' },
     ];
@@ -104,11 +103,11 @@ const createInitialMenuButtons = () => {
             .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
             .setCustomId('change_channel')
-            .setLabel('Change Text Channel')
+            .setLabel('Select Text Channel')
             .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('change_user')
-            .setLabel('Change User')
+            .setLabel('Select User')
             .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('settings')

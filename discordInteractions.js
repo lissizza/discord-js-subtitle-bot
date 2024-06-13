@@ -1,14 +1,5 @@
-const {
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    ChannelType,
-    StringSelectMenuBuilder,
-} = require('discord.js');
-const { joinVoiceChannel, getVoiceConnection, EndBehaviorType } = require('@discordjs/voice');
-const prism = require('prism-media');
-const { PassThrough } = require('stream');
-const ffmpeg = require('fluent-ffmpeg');
+const { ChannelType } = require('discord.js');
+const { joinVoice, leaveVoice } = require('./audioProcessing');
 const {
     WHISPER_SETTINGS,
     MIN_DURATION,
@@ -17,7 +8,6 @@ const {
     BYTES_PER_SAMPLE,
     SILENCE_DURATION,
 } = require('./config');
-const { sendTranscriptionRequest } = require('./whisperSettings');
 const {
     createSettingsModal,
     getSettingsValue,
@@ -27,8 +17,7 @@ const {
     createUserSelectionMenu,
 } = require('./visualElements');
 
-let selectedTextChannels = []; // Array to hold selected channels and users
-let connection = null;
+let selectedTextChannels = [];
 
 async function handleInteractionCreate(interaction) {
     if (!interaction.isButton() && !interaction.isStringSelectMenu() && !interaction.isModalSubmit()) return;
@@ -97,6 +86,10 @@ async function updateSettings(interaction, setting, newValue) {
             SILENCE_DURATION = parseInt(newValue);
             await interaction.reply({ content: `Silence Duration set to ${SILENCE_DURATION}`, ephemeral: true });
             break;
+        case 'BYTES_PER_SAMPLE':
+            BYTES_PER_SAMPLE = parseInt(newValue);
+            await interaction.reply({ content: `Bytes Per Sample set to ${BYTES_PER_SAMPLE}`, ephemeral: true });
+            break;
         case 'temperature':
             WHISPER_SETTINGS.temperature = parseFloat(newValue);
             await interaction.reply({ content: `Whisper Temperature set to ${WHISPER_SETTINGS.temperature}`, ephemeral: true });
@@ -111,119 +104,9 @@ async function updateSettings(interaction, setting, newValue) {
     }
 }
 
-async function joinVoice(member) {
-    if (!member.voice.channel) {
-        member.send('You need to join a voice channel first!');
-        return;
-    }
-
-    if (selectedTextChannels.length === 0) {
-        member.send('Please select a text channel for transcription using !transcribe #channel or !transcribe @username');
-        return;
-    }
-
-    leaveVoice(member.guild.id);
-
-    connection = joinVoiceChannel({
-        channelId: member.voice.channel.id,
-        guildId: member.guild.id,
-        adapterCreator: member.guild.voiceAdapterCreator,
-    });
-
-    connection.on('stateChange', (oldState, newState) => {
-        if (oldState.status === 'ready' && newState.status === 'connecting') {
-            console.log('The bot has connected to the channel!');
-        }
-    });
-
-    const receiver = connection.receiver;
-
-    receiver.speaking.on('start', async userId => {
-        const user = await member.client.users.fetch(userId);
-
-        const audioStream = receiver.subscribe(userId, {
-            end: {
-                behavior: EndBehaviorType.AfterSilence,
-                duration: SILENCE_DURATION,
-            },
-        });
-
-        const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 }));
-        const wavStream = new PassThrough();
-
-        const audioBuffer = [];
-        let duration = 0;
-
-        const ffmpegProcess = ffmpeg(pcmStream)
-            .inputFormat('s16le')
-            .audioFrequency(SAMPLE_RATE)
-            .audioChannels(CHANNELS)
-            .toFormat('wav')
-            .on('error', (err) => {
-                console.error('Error processing audio:', err);
-            })
-            .on('end', async () => {
-                if (duration > MIN_DURATION) {
-                    const transcription = await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannels, WHISPER_SETTINGS, member.guild);
-                    if (transcription) {
-                        for (const target of selectedTextChannels) {
-                            if (target.type === 'channel') {
-                                await target.value.send(`${user.username}: ${transcription}`);
-                            } else if (target.type === 'user') {
-                                await target.value.send(`${user.username}: ${transcription}`);
-                            }
-                        }
-                    } else {
-                        console.log('No transcription available.');
-                    }
-                } else {
-                    console.log('Audio is too short to transcribe.');
-                }
-            })
-            .pipe(wavStream);
-
-        wavStream.on('data', chunk => {
-            audioBuffer.push(chunk);
-            duration += chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS);
-        });
-    });
-}
-
-function leaveVoice(guildId) {
-    const conn = getVoiceConnection(guildId);
-    if (conn) {
-        conn.destroy();
-    }
-    connection = null;
-}
-
-async function handleChannelSelection(interaction) {
-    const channelId = interaction.values[0];
-    const selectedChannel = interaction.guild.channels.cache.get(channelId);
-
-    if (selectedChannel) {
-        selectedTextChannels.push({ type: 'channel', value: selectedChannel });
-        await interaction.reply({ content: `Selected channel: ${selectedChannel.name}`, ephemeral: true });
-    } else {
-        await interaction.reply({ content: 'Channel selection failed.', ephemeral: true });
-    }
-}
-
-async function handleUserSelection(interaction) {
-    const userId = interaction.values[0];
-    const selectedUser = interaction.guild.members.cache.get(userId);
-
-    if (selectedUser) {
-        selectedTextChannels.push({ type: 'user', value: selectedUser.user });
-        await interaction.reply({ content: `Selected user: ${selectedUser.user.username}`, ephemeral: true });
-    } else {
-        await interaction.reply({ content: 'User selection failed.', ephemeral: true });
-    }
-}
-
 async function handleJoin(interaction) {
     if (interaction.member.voice.channel) {
-        await joinVoice(interaction.member);
+        await joinVoice(interaction.member, selectedTextChannels);
         await interaction.reply({ content: 'Joined the voice channel!', ephemeral: true });
     } else {
         await interaction.reply({ content: 'You need to join a voice channel first!', ephemeral: true });
@@ -236,7 +119,7 @@ async function handleLeave(interaction) {
 }
 
 async function handleJoinCommand(message) {
-    await joinVoice(message.member);
+    await joinVoice(message.member, selectedTextChannels);
     message.reply('Joined the voice channel.');
 }
 
@@ -265,6 +148,30 @@ async function showUserSelectionMenu(interaction) {
 async function showSettings(interaction) {
     const rows = createSettingsButtons();
     await interaction.reply({ content: 'Select a setting to update:', components: rows, ephemeral: true });
+}
+
+async function handleChannelSelection(interaction) {
+    const channelId = interaction.values[0];
+    const selectedChannel = interaction.guild.channels.cache.get(channelId);
+
+    if (selectedChannel) {
+        selectedTextChannels.push({ type: 'channel', value: selectedChannel });
+        await interaction.reply({ content: `Selected channel: ${selectedChannel.name}`, ephemeral: true });
+    } else {
+        await interaction.reply({ content: 'Channel selection failed.', ephemeral: true });
+    }
+}
+
+async function handleUserSelection(interaction) {
+    const userId = interaction.values[0];
+    const selectedUser = interaction.guild.members.cache.get(userId);
+
+    if (selectedUser) {
+        selectedTextChannels.push({ type: 'user', value: selectedUser.user });
+        await interaction.reply({ content: `Selected user: ${selectedUser.user.username}`, ephemeral: true });
+    } else {
+        await interaction.reply({ content: 'User selection failed.', ephemeral: true });
+    }
 }
 
 async function handleMessageCreate(message) {
