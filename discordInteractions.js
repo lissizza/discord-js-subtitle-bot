@@ -1,11 +1,7 @@
 const { joinVoice, leaveVoice } = require('./audioProcessing');
 const {
     WHISPER_SETTINGS,
-    MIN_DURATION,
-    SAMPLE_RATE,
-    CHANNELS,
-    BYTES_PER_SAMPLE,
-    SILENCE_DURATION,
+    AUDIO_SETTINGS,
 } = require('./config');
 const {
     createSettingsModal,
@@ -71,39 +67,15 @@ async function updateSettings(interaction, setting, newValue) {
     console.log(`Received new value for setting ${setting}: ${newValue}`);
 
     // Update the settings based on the interaction
-    switch (setting) {
-        case 'MIN_DURATION':
-            MIN_DURATION = parseFloat(newValue);
-            await interaction.reply({ content: `Minimal Speech Duration set to ${MIN_DURATION}`, ephemeral: true });
-            break;
-        case 'SAMPLE_RATE':
-            SAMPLE_RATE = parseInt(newValue);
-            await interaction.reply({ content: `Sample Rate set to ${SAMPLE_RATE}`, ephemeral: true });
-            break;
-        case 'CHANNELS':
-            CHANNELS = parseInt(newValue);
-            await interaction.reply({ content: `Audio Channels Count set to ${CHANNELS}`, ephemeral: true });
-            break;
-        case 'SILENCE_DURATION':
-            SILENCE_DURATION = parseInt(newValue);
-            await interaction.reply({ content: `Silence Duration set to ${SILENCE_DURATION}`, ephemeral: true });
-            break;
-        case 'BYTES_PER_SAMPLE':
-            BYTES_PER_SAMPLE = parseInt(newValue);
-            await interaction.reply({ content: `Bytes Per Sample set to ${BYTES_PER_SAMPLE}`, ephemeral: true });
-            break;
-        case 'temperature':
-            WHISPER_SETTINGS.temperature = parseFloat(newValue);
-            await interaction.reply({ content: `Whisper Temperature set to ${WHISPER_SETTINGS.temperature}`, ephemeral: true });
-            break;
-        case 'language':
-            WHISPER_SETTINGS.language = newValue;
-            await interaction.reply({ content: `Whisper Language set to ${WHISPER_SETTINGS.language}`, ephemeral: true });
-            break;
-        // Add other settings as needed
-        default:
-            await interaction.reply({ content: 'Unknown setting.', ephemeral: true });
+    if (AUDIO_SETTINGS.hasOwnProperty(setting)) {
+        AUDIO_SETTINGS[setting] = parseFloat(newValue);
+    } else if (WHISPER_SETTINGS.hasOwnProperty(setting)) {
+        WHISPER_SETTINGS[setting] = setting === 'language' ? newValue : parseFloat(newValue);
+    } else {
+        await interaction.reply({ content: 'Unknown setting.', ephemeral: true });
+        return;
     }
+    await interaction.reply({ content: `${SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting]} set to ${newValue}`, ephemeral: true });
 }
 
 async function handleJoin(interaction) {

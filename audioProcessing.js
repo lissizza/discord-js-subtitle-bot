@@ -3,25 +3,13 @@ const prism = require('prism-media');
 const { PassThrough } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const { sendTranscriptionRequest } = require('./whisperSettings');
-const {
-    WHISPER_SETTINGS,
-    MIN_DURATION,
-    SAMPLE_RATE,
-    CHANNELS,
-    BYTES_PER_SAMPLE,
-    SILENCE_DURATION,
-} = require('./config');
+const { AUDIO_SETTINGS } = require('./config');
 
 let connection = null;
 
 async function joinVoice(member, selectedTextChannels) {
     if (!member.voice.channel) {
         member.send('You need to join a voice channel first!');
-        return;
-    }
-
-    if (selectedTextChannels.length === 0) {
-        member.send('Please select a text channel for transcription using !transcribe #channel or !transcribe @username');
         return;
     }
 
@@ -44,51 +32,48 @@ async function joinVoice(member, selectedTextChannels) {
     receiver.speaking.on('start', async userId => {
         const user = await member.client.users.fetch(userId);
 
-        const audioStream = receiver.subscribe(userId, {
-            end: {
-                behavior: EndBehaviorType.AfterSilence,
-                duration: SILENCE_DURATION,
-            },
-        });
+        if (selectedTextChannels.length > 0) {
+            const audioStream = receiver.subscribe(userId, {
+                end: {
+                    behavior: EndBehaviorType.AfterSilence,
+                    duration: AUDIO_SETTINGS.SILENCE_DURATION,
+                },
+            });
 
-        const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 }));
-        const wavStream = new PassThrough();
+            const pcmStream = audioStream.pipe(new prism.opus.Decoder({ 
+                rate: AUDIO_SETTINGS.SAMPLE_RATE, 
+                channels: AUDIO_SETTINGS.CHANNELS, 
+                frameSize: 960 
+            }));
+            const wavStream = new PassThrough();
 
-        const audioBuffer = [];
-        let duration = 0;
+            const audioBuffer = [];
+            let duration = 0;
 
-        const ffmpegProcess = ffmpeg(pcmStream)
-            .inputFormat('s16le')
-            .audioFrequency(SAMPLE_RATE)
-            .audioChannels(CHANNELS)
-            .toFormat('wav')
-            .on('error', (err) => {
-                console.error('Error processing audio:', err);
-            })
-            .on('end', async () => {
-                if (duration > MIN_DURATION) {
-                    const transcription = await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannels, WHISPER_SETTINGS, member.guild);
-                    if (transcription) {
-                        for (const target of selectedTextChannels) {
-                            if (target.type === 'channel') {
-                                await target.value.send(`${user.username}: ${transcription}`);
-                            } else if (target.type === 'user') {
-                                await target.value.send(`${user.username}: ${transcription}`);
-                            }
-                        }
+            const ffmpegProcess = ffmpeg(pcmStream)
+                .inputFormat('s16le')
+                .audioFrequency(AUDIO_SETTINGS.SAMPLE_RATE)
+                .audioChannels(AUDIO_SETTINGS.CHANNELS)
+                .toFormat('wav')
+                .on('error', (err) => {
+                    console.error('Error processing audio:', err);
+                })
+                .on('end', async () => {
+                    if (duration > AUDIO_SETTINGS.MIN_DURATION) {
+                        await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannels, AUDIO_SETTINGS);
                     } else {
-                        console.log('No transcription available.');
+                        console.log('Audio is too short to transcribe.');
                     }
-                } else {
-                    console.log('Audio is too short to transcribe.');
-                }
-            })
-            .pipe(wavStream);
+                })
+                .pipe(wavStream);
 
-        wavStream.on('data', chunk => {
-            audioBuffer.push(chunk);
-            duration += chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS);
-        });
+            wavStream.on('data', chunk => {
+                audioBuffer.push(chunk);
+                duration += chunk.length / (AUDIO_SETTINGS.SAMPLE_RATE * AUDIO_SETTINGS.BYTES_PER_SAMPLE * AUDIO_SETTINGS.CHANNELS);
+            });
+        } else {
+            console.log('No text channel or user selected for transcription.');
+        }
     });
 }
 

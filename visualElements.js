@@ -1,19 +1,23 @@
-const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
-const { WHISPER_SETTINGS, MIN_DURATION, SAMPLE_RATE, CHANNELS, SILENCE_DURATION, BYTES_PER_SAMPLE } = require('./config');
+const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ChannelType } = require('discord.js');
+const { WHISPER_SETTINGS, AUDIO_SETTINGS } = require('./config');
 
 const SETTINGS = {
-    MIN_DURATION: 'Minimal Speech Duration',
-    SAMPLE_RATE: 'Sample Rate',
-    CHANNELS: 'Audio Channels Count',
-    SILENCE_DURATION: 'Silence Duration',
-    BYTES_PER_SAMPLE: 'Bytes Per Sample',
-    temperature: 'Whisper Temperature',
-    language: 'Whisper Language',
+    AUDIO: {
+        MIN_DURATION: 'Minimal Speech Duration',
+        SAMPLE_RATE: 'Sample Rate',
+        CHANNELS: 'Audio Channels Count',
+        SILENCE_DURATION: 'Silence Duration',
+        BYTES_PER_SAMPLE: 'Bytes Per Sample'
+    },
+    WHISPER: {
+        temperature: 'Whisper Temperature',
+        language: 'Whisper Language'
+    }
 };
 
 // Create a modal to input settings
 const createSettingsModal = (setting, currentValue) => {
-    let title = SETTINGS[setting];
+    let title = SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting];
 
     return new ModalBuilder()
         .setCustomId(`settings_${setting}`)
@@ -31,42 +35,34 @@ const createSettingsModal = (setting, currentValue) => {
 
 const getSettingsValue = (setting) => {
     console.log(`Getting value for setting: ${setting}`);
-    switch (setting) {
-        case 'MIN_DURATION':
-            return MIN_DURATION.toString();
-        case 'SAMPLE_RATE':
-            return SAMPLE_RATE.toString();
-        case 'CHANNELS':
-            return CHANNELS.toString();
-        case 'SILENCE_DURATION':
-            return SILENCE_DURATION.toString();
-        case 'BYTES_PER_SAMPLE':
-            return BYTES_PER_SAMPLE.toString();
-        case 'temperature':
-            return WHISPER_SETTINGS.temperature.toString();
-        case 'language':
-            return WHISPER_SETTINGS.language;
-        default:
-            return '';
-    }
+    const settingValues = {
+        ...AUDIO_SETTINGS,
+        ...WHISPER_SETTINGS
+    };
+
+    return settingValues[setting] ? settingValues[setting].toString() : '';
 };
 
 // Create buttons for settings
 const createSettingsButtons = () => {
-    const components = Object.keys(SETTINGS).map(setting => 
+    const audioSettingsComponents = Object.keys(SETTINGS.AUDIO).map(setting => 
         new ButtonBuilder()
             .setCustomId(`update_${setting}`)
-            .setLabel(SETTINGS[setting])
+            .setLabel(SETTINGS.AUDIO[setting])
             .setStyle(ButtonStyle.Primary)
     );
 
-    const rows = [];
-    for (let i = 0; i < components.length; i += 5) {
-        const row = new ActionRowBuilder().addComponents(components.slice(i, i + 5));
-        rows.push(row);
-    }
+    const whisperSettingsComponents = Object.keys(SETTINGS.WHISPER).map(setting => 
+        new ButtonBuilder()
+            .setCustomId(`update_${setting}`)
+            .setLabel(SETTINGS.WHISPER[setting])
+            .setStyle(ButtonStyle.Primary)
+    );
 
-    return rows;
+    const audioSettingsRow = new ActionRowBuilder().addComponents(audioSettingsComponents);
+    const whisperSettingsRow = new ActionRowBuilder().addComponents(whisperSettingsComponents);
+
+    return [audioSettingsRow, whisperSettingsRow];
 };
 
 const createInitialMenuButtons = () => {

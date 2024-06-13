@@ -1,21 +1,17 @@
 const WHISPER_SETTINGS = {
-    temperature: 0.9, 
-    language: 'en'
+    temperature: 0.5,
+    language: 'en',
 };
 
-let MIN_DURATION = 1.0; 
-let SAMPLE_RATE = 48000;
-let CHANNELS = 1;
-let SILENCE_DURATION = 100;
-const BYTES_PER_SAMPLE = 2;
-
-console.log(`Config values: MIN_DURATION=${MIN_DURATION}, SAMPLE_RATE=${SAMPLE_RATE}, CHANNELS=${CHANNELS}, SILENCE_DURATION=${SILENCE_DURATION}`);
+let AUDIO_SETTINGS = {
+    MIN_DURATION: 1.0,
+    SAMPLE_RATE: 48000,
+    CHANNELS: 1,
+    SILENCE_DURATION: 100,
+    BYTES_PER_SAMPLE: 2
+};
 
 module.exports = {
     WHISPER_SETTINGS,
-    MIN_DURATION,
-    SAMPLE_RATE,
-    CHANNELS,
-    BYTES_PER_SAMPLE,
-    SILENCE_DURATION,
+    AUDIO_SETTINGS
 };
