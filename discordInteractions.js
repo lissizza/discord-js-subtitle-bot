@@ -3,12 +3,12 @@ const {
     ButtonBuilder,
     ButtonStyle,
     ChannelType,
+    StringSelectMenuBuilder,
 } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, EndBehaviorType } = require('@discordjs/voice');
 const prism = require('prism-media');
 const { PassThrough } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
-const { sendTranscriptionRequest } = require('./whisperSettings');
 const {
     WHISPER_SETTINGS,
     MIN_DURATION,
@@ -17,17 +17,21 @@ const {
     BYTES_PER_SAMPLE,
     SILENCE_DURATION,
 } = require('./config');
-const { createSettingsModal, getSettingsValue, createSettingsButtons } = require('./visualElements');
+const { sendTranscriptionRequest } = require('./whisperSettings');
+const {
+    createSettingsModal,
+    getSettingsValue,
+    createSettingsButtons,
+    createInitialMenuButtons,
+    createChannelSelectionMenu,
+    createUserSelectionMenu,
+} = require('./visualElements');
 
-let selectedTextChannelName = null; // changed to channel name
+let selectedTextChannels = []; // Array to hold selected channels and users
 let connection = null;
 
-// Get the channel argument from the command line
-const args = process.argv.slice(2);
-const startChannelName = args.length > 0 ? args[0] : 'general';
-
 async function handleInteractionCreate(interaction) {
-    if (!interaction.isButton() && !interaction.isModalSubmit()) return;
+    if (!interaction.isButton() && !interaction.isStringSelectMenu() && !interaction.isModalSubmit()) return;
 
     try {
         if (interaction.isButton()) {
@@ -36,11 +40,11 @@ async function handleInteractionCreate(interaction) {
             } else if (interaction.customId === 'leave') {
                 await handleLeave(interaction);
             } else if (interaction.customId === 'change_channel') {
-                await showChannelSelection(interaction);
+                await showChannelSelectionMenu(interaction);
+            } else if (interaction.customId === 'change_user') {
+                await showUserSelectionMenu(interaction);
             } else if (interaction.customId === 'settings') {
                 await showSettings(interaction);
-            } else if (interaction.customId.startsWith('select_')) {
-                await handleChannelSelection(interaction);
             } else if (interaction.customId.startsWith('update_')) {
                 const setting = interaction.customId.substring(7);
                 console.log(`Received update request for setting: ${setting}`);
@@ -53,42 +57,16 @@ async function handleInteractionCreate(interaction) {
                     await interaction.showModal(modal);
                 }
             }
+        } else if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'select_channel') {
+                await handleChannelSelection(interaction);
+            } else if (interaction.customId === 'select_user') {
+                await handleUserSelection(interaction);
+            }
         } else if (interaction.isModalSubmit()) {
             const setting = interaction.customId.substring(9);
             const newValue = interaction.fields.getTextInputValue(`input_${setting}`);
-
-            console.log(`Received new value for setting ${setting}: ${newValue}`);
-
-            // Update the settings based on the interaction
-            switch (setting) {
-                case 'MIN_DURATION':
-                    MIN_DURATION = parseFloat(newValue);
-                    await interaction.reply({ content: `Minimal Speech Duration set to ${MIN_DURATION}`, ephemeral: true });
-                    break;
-                case 'SAMPLE_RATE':
-                    SAMPLE_RATE = parseInt(newValue);
-                    await interaction.reply({ content: `Sample Rate set to ${SAMPLE_RATE}`, ephemeral: true });
-                    break;
-                case 'CHANNELS':
-                    CHANNELS = parseInt(newValue);
-                    await interaction.reply({ content: `Audio Channels Count set to ${CHANNELS}`, ephemeral: true });
-                    break;
-                case 'SILENCE_DURATION':
-                    SILENCE_DURATION = parseInt(newValue);
-                    await interaction.reply({ content: `Silence Duration set to ${SILENCE_DURATION}`, ephemeral: true });
-                    break;
-                case 'temperature':
-                    WHISPER_SETTINGS.temperature = parseFloat(newValue);
-                    await interaction.reply({ content: `Whisper Temperature set to ${WHISPER_SETTINGS.temperature}`, ephemeral: true });
-                    break;
-                case 'language':
-                    WHISPER_SETTINGS.language = newValue;
-                    await interaction.reply({ content: `Whisper Language set to ${WHISPER_SETTINGS.language}`, ephemeral: true });
-                    break;
-                // Add other settings as needed
-                default:
-                    await interaction.reply({ content: 'Unknown setting.', ephemeral: true });
-            }
+            await updateSettings(interaction, setting, newValue);
         }
     } catch (error) {
         console.error('Error handling interaction:', error);
@@ -98,10 +76,49 @@ async function handleInteractionCreate(interaction) {
     }
 }
 
-// Functions to handle voice channel interactions
+async function updateSettings(interaction, setting, newValue) {
+    console.log(`Received new value for setting ${setting}: ${newValue}`);
+
+    // Update the settings based on the interaction
+    switch (setting) {
+        case 'MIN_DURATION':
+            MIN_DURATION = parseFloat(newValue);
+            await interaction.reply({ content: `Minimal Speech Duration set to ${MIN_DURATION}`, ephemeral: true });
+            break;
+        case 'SAMPLE_RATE':
+            SAMPLE_RATE = parseInt(newValue);
+            await interaction.reply({ content: `Sample Rate set to ${SAMPLE_RATE}`, ephemeral: true });
+            break;
+        case 'CHANNELS':
+            CHANNELS = parseInt(newValue);
+            await interaction.reply({ content: `Audio Channels Count set to ${CHANNELS}`, ephemeral: true });
+            break;
+        case 'SILENCE_DURATION':
+            SILENCE_DURATION = parseInt(newValue);
+            await interaction.reply({ content: `Silence Duration set to ${SILENCE_DURATION}`, ephemeral: true });
+            break;
+        case 'temperature':
+            WHISPER_SETTINGS.temperature = parseFloat(newValue);
+            await interaction.reply({ content: `Whisper Temperature set to ${WHISPER_SETTINGS.temperature}`, ephemeral: true });
+            break;
+        case 'language':
+            WHISPER_SETTINGS.language = newValue;
+            await interaction.reply({ content: `Whisper Language set to ${WHISPER_SETTINGS.language}`, ephemeral: true });
+            break;
+        // Add other settings as needed
+        default:
+            await interaction.reply({ content: 'Unknown setting.', ephemeral: true });
+    }
+}
+
 async function joinVoice(member) {
     if (!member.voice.channel) {
         member.send('You need to join a voice channel first!');
+        return;
+    }
+
+    if (selectedTextChannels.length === 0) {
+        member.send('Please select a text channel for transcription using !transcribe #channel or !transcribe @username');
         return;
     }
 
@@ -124,49 +141,51 @@ async function joinVoice(member) {
     receiver.speaking.on('start', async userId => {
         const user = await member.client.users.fetch(userId);
 
-        // Find the text channel after connecting to the voice channel
-        if (selectedTextChannelName) {
-            selectedTextChannel = member.guild.channels.cache.find(channel => channel.name === selectedTextChannelName && channel.type === ChannelType.GuildText);
-        }
+        const audioStream = receiver.subscribe(userId, {
+            end: {
+                behavior: EndBehaviorType.AfterSilence,
+                duration: SILENCE_DURATION,
+            },
+        });
 
-        if (selectedTextChannel) {
-            const audioStream = receiver.subscribe(userId, {
-                end: {
-                    behavior: EndBehaviorType.AfterSilence,
-                    duration: SILENCE_DURATION,
-                },
-            });
+        const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 }));
+        const wavStream = new PassThrough();
 
-            const pcmStream = audioStream.pipe(new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 }));
-            const wavStream = new PassThrough();
+        const audioBuffer = [];
+        let duration = 0;
 
-            const audioBuffer = [];
-            let duration = 0;
-
-            const ffmpegProcess = ffmpeg(pcmStream)
-                .inputFormat('s16le')
-                .audioFrequency(SAMPLE_RATE)
-                .audioChannels(CHANNELS)
-                .toFormat('wav')
-                .on('error', (err) => {
-                    console.error('Error processing audio:', err);
-                })
-                .on('end', async () => {
-                    if (duration > MIN_DURATION) {
-                        await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannel, WHISPER_SETTINGS, member.guild);
+        const ffmpegProcess = ffmpeg(pcmStream)
+            .inputFormat('s16le')
+            .audioFrequency(SAMPLE_RATE)
+            .audioChannels(CHANNELS)
+            .toFormat('wav')
+            .on('error', (err) => {
+                console.error('Error processing audio:', err);
+            })
+            .on('end', async () => {
+                if (duration > MIN_DURATION) {
+                    const transcription = await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannels, WHISPER_SETTINGS, member.guild);
+                    if (transcription) {
+                        for (const target of selectedTextChannels) {
+                            if (target.type === 'channel') {
+                                await target.value.send(`${user.username}: ${transcription}`);
+                            } else if (target.type === 'user') {
+                                await target.value.send(`${user.username}: ${transcription}`);
+                            }
+                        }
                     } else {
-                        console.log('Audio is too short to transcribe.');
+                        console.log('No transcription available.');
                     }
-                })
-                .pipe(wavStream);
+                } else {
+                    console.log('Audio is too short to transcribe.');
+                }
+            })
+            .pipe(wavStream);
 
-            wavStream.on('data', chunk => {
-                audioBuffer.push(chunk);
-                duration += chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS);
-            });
-        } else {
-            console.log('No text channel selected or not on the same server.');
-        }
+        wavStream.on('data', chunk => {
+            audioBuffer.push(chunk);
+            duration += chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS);
+        });
     });
 }
 
@@ -178,16 +197,27 @@ function leaveVoice(guildId) {
     connection = null;
 }
 
-// Functions to handle specific actions
 async function handleChannelSelection(interaction) {
-    const channelId = interaction.customId.split('_')[1];
+    const channelId = interaction.values[0];
     const selectedChannel = interaction.guild.channels.cache.get(channelId);
 
     if (selectedChannel) {
-        selectedTextChannelName = selectedChannel.name;
+        selectedTextChannels.push({ type: 'channel', value: selectedChannel });
         await interaction.reply({ content: `Selected channel: ${selectedChannel.name}`, ephemeral: true });
     } else {
         await interaction.reply({ content: 'Channel selection failed.', ephemeral: true });
+    }
+}
+
+async function handleUserSelection(interaction) {
+    const userId = interaction.values[0];
+    const selectedUser = interaction.guild.members.cache.get(userId);
+
+    if (selectedUser) {
+        selectedTextChannels.push({ type: 'user', value: selectedUser.user });
+        await interaction.reply({ content: `Selected user: ${selectedUser.user.username}`, ephemeral: true });
+    } else {
+        await interaction.reply({ content: 'User selection failed.', ephemeral: true });
     }
 }
 
@@ -215,63 +245,21 @@ async function handleLeaveCommand(message) {
     message.reply('Disconnected from the voice channel.');
 }
 
-// Utility functions
-async function sendInitialMessage(guild) {
-    const targetChannel = guild.channels.cache.find(channel => channel.name === startChannelName && channel.type === ChannelType.GuildText) ||
-        guild.channels.cache.find(channel => channel.name === 'general' && channel.type === ChannelType.GuildText);
-
-    if (targetChannel) {
-        selectedTextChannelName = targetChannel.name;
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('join')
-                .setLabel('Join')
-                .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId('leave')
-                .setLabel('Leave')
-                .setStyle(ButtonStyle.Danger),
-            new ButtonBuilder()
-                .setCustomId('change_channel')
-                .setLabel('Change Text Channel')
-                .setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder()
-                .setCustomId('settings')
-                .setLabel('Settings')
-                .setStyle(ButtonStyle.Secondary)
-        );
-
-        await targetChannel.send({ content: 'Bot is ready. Select an action:', components: [row] });
-    } else {
-        console.log('Target channel not found');
-    }
+async function sendInitialMessage(channel) {
+    const row = createInitialMenuButtons();
+    await channel.send({ content: 'Bot is ready. Select an action:', components: [row] });
 }
 
-async function showChannelSelection(interaction) {
+async function showChannelSelectionMenu(interaction) {
     const textChannels = interaction.guild.channels.cache.filter(channel => channel.type === ChannelType.GuildText);
-    const rows = [];
+    const row = createChannelSelectionMenu(textChannels);
+    await interaction.reply({ content: 'Select the text channel to post transcriptions:', components: [row], ephemeral: true });
+}
 
-    let row = new ActionRowBuilder();
-    textChannels.forEach((channel, index) => {
-        if (row.components.length === 5) {
-            rows.push(row);
-            row = new ActionRowBuilder();
-        }
-
-        row.addComponents(
-            new ButtonBuilder()
-                .setCustomId(`select_${channel.id}`)
-                .setLabel(channel.name)
-                .setStyle(ButtonStyle.Primary)
-        );
-    });
-
-    if (row.components.length > 0) {
-        rows.push(row);
-    }
-
-    await interaction.reply({ content: 'Select the text channel to post transcriptions:', components: rows, ephemeral: true });
+async function showUserSelectionMenu(interaction) {
+    const members = interaction.guild.members.cache.filter(member => !member.user.bot);
+    const row = createUserSelectionMenu(members);
+    await interaction.reply({ content: 'Select the user to send transcriptions to:', components: [row], ephemeral: true });
 }
 
 async function showSettings(interaction) {
@@ -281,13 +269,36 @@ async function showSettings(interaction) {
 
 async function handleMessageCreate(message) {
     if (message.content === '!menu') {
-        await sendInitialMessage(message.guild);
+        await sendInitialMessage(message.channel);
     } else if (message.content === '!join') {
         await handleJoinCommand(message);
     } else if (message.content === '!leave') {
         await handleLeaveCommand(message);
-    } else if (message.content === '!set_text_channel') {
-        await showChannelSelection(message);
+    } else if (message.content.startsWith('!transcribe')) {
+        const args = message.content.split(' ');
+        const target = args[1];
+
+        if (target.startsWith('<#')) {
+            const channelId = target.slice(2, -1);
+            const textChannel = message.guild.channels.cache.get(channelId);
+            if (textChannel) {
+                selectedTextChannels.push({ type: 'channel', value: textChannel });
+                message.reply(`Selected channel for transcription: ${textChannel.name}`);
+            } else {
+                message.reply('Channel not found.');
+            }
+        } else if (target.startsWith('<@')) {
+            const userId = target.slice(2, -1);
+            const user = await message.client.users.fetch(userId);
+            if (user) {
+                selectedTextChannels.push({ type: 'user', value: user });
+                message.reply(`Selected user for transcription: ${user.username}`);
+            } else {
+                message.reply('User not found.');
+            }
+        } else {
+            message.reply('Invalid target for transcription.');
+        }
     } else if (message.content === '!settings') {
         await showSettings(message);
     }

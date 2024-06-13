@@ -4,7 +4,7 @@ require('dotenv').config();
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannel, WHISPER_SETTINGS, guild) {
+async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels, WHISPER_SETTINGS, guild) {
     const form = new FormData();
     form.append('model', 'whisper-1');
     form.append('file', audioBuffer, {
@@ -29,16 +29,14 @@ async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannel, 
         if (response.data && response.data.text) {
             const transcription = response.data.text.trim();
             console.log(`Transcription: ${transcription}`);
-            if (selectedTextChannel && selectedTextChannel.guild.id === guild.id) {
-                selectedTextChannel.send({ content: `${user.username}: ${transcription}`, ephemeral: true });
-            } else {
-                console.log('No text channel selected or not on the same server.');
-            }
+            return transcription;
         } else {
             console.error('Transcription response does not contain text:', response.data);
+            return null;
         }
     } catch (error) {
         console.error('Error transcribing audio:', error.response ? error.response.data : error.message);
+        return null;
     }
 }
 

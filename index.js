@@ -25,10 +25,6 @@ async function setupBot() {
 
 async function onReady() {
     console.log(`Logged in as ${client.user.tag}`);
-    const guilds = client.guilds.cache;
-    guilds.forEach(async (guild) => {
-        await require('./discordInteractions').sendInitialMessage(guild);
-    });
 }
 
 setupBot();
