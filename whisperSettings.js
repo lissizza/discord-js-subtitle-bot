@@ -2,7 +2,7 @@ const FormData = require('form-data');
 const axios = require('axios');
 require('dotenv').config();
 const ISO6391 = require('iso-639-1');
-const { MODEL, WHISPER_SETTINGS } = require('./config');
+const { readConfig } = require('./config');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -10,8 +10,9 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const isValidISO6391 = (code) => ISO6391.validate(code) || code === 'auto';
 
 async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels, settings, guild) {
+    const config = readConfig();
     const form = new FormData();
-    form.append('model', MODEL.TRANSCRIPTION_MODEL);
+    form.append('model', config.MODEL.TRANSCRIPTION_MODEL);
     form.append('file', audioBuffer, {
         contentType: 'audio/wav',
         filename: 'audio.wav'
@@ -49,11 +50,14 @@ async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels,
         if (response.data && response.data.text) {
             const transcription = response.data.text.trim();
             console.log(`Transcription: ${transcription}`);
-            const content = settings.MODE === 'translate'
-                ? `**Original:** ${transcription}\n**Translation:** ${await translateText(transcription, settings.WHISPER_SETTINGS.targetLanguage, user, selectedTextChannels, guild)}`
-                : transcription;
 
-            console.log(`Final message: ${content}`);
+            let content = transcription;
+            console.log('Current mode:', config.MODE);
+            if (config.MODE === 'translate') {
+                const translation = await translateText(transcription, config.WHISPER_SETTINGS.targetLanguage);
+                content = `**Original:** ${transcription}\n**Translation:** ${translation}`;
+            }
+
             for (const target of selectedTextChannels) {
                 if (target.type === 'channel' && target.value.guild.id === guild.id) {
                     await target.value.send(`${user.username}: ${content}`);
@@ -82,12 +86,13 @@ async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels,
     }
 }
 
-async function translateText(text, targetLanguage, user, selectedTextChannels, guild) {
+async function translateText(text, targetLanguage) {
+    const config = readConfig();
     const data = {
-        model: MODEL.TRANSLATION_MODEL,
+        model: config.MODEL.TRANSLATION_MODEL,
         messages: [
-            { role: 'system', content: 'Translate the following text.' },
-            { role: 'user', content: `Translate to ${targetLanguage}: ${text}` }
+            { role: 'system', content: 'You are a helpful assistant.' },
+            { role: 'user', content: `Translate the following text to ${targetLanguage}: ${text}` }
         ],
         max_tokens: 100
     };
@@ -98,17 +103,10 @@ async function translateText(text, targetLanguage, user, selectedTextChannels, g
     };
 
     try {
-        console.log('Sending translation request...');
+        console.log('Sending translation request with data:', JSON.stringify(data, null, 2));
         const response = await axios.post('https://api.openai.com/v1/chat/completions', data, { headers });
-
-        if (response.data && response.data.choices && response.data.choices.length > 0) {
-            const translation = response.data.choices[0].message.content.trim();
-            console.log(`Translation: ${translation}`);
-            return translation;
-        } else {
-            console.error('Translation response does not contain valid data:', response.data);
-            return '**Translation error**';
-        }
+        console.log('Translation response:', response.data);
+        return response.data.choices[0].message.content.trim();
     } catch (error) {
         console.error('Error translating text:', error.response ? error.response.data : error.message);
         return '**Translation error**';

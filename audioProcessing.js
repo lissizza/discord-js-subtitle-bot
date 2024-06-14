@@ -3,11 +3,11 @@ const prism = require('prism-media');
 const { PassThrough } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const { sendTranscriptionRequest } = require('./whisperSettings');
-let { WHISPER_SETTINGS, AUDIO_SETTINGS } = require('./config'); // Обновим импорт
+const { readConfig } = require('./config'); // Обновим импорт
 
 let connection = null;
 
-async function joinVoice(member, selectedTextChannels, mode) { // Добавим аргумент mode
+async function joinVoice(member, selectedTextChannels) {
     if (!member.voice.channel) {
         member.send('You need to join a voice channel first!');
         return;
@@ -30,6 +30,9 @@ async function joinVoice(member, selectedTextChannels, mode) { // Добавим
     const receiver = connection.receiver;
 
     receiver.speaking.on('start', async userId => {
+        const config = readConfig();
+        const { WHISPER_SETTINGS, AUDIO_SETTINGS, MODE } = config;
+
         const user = await member.client.users.fetch(userId);
 
         const audioStream = receiver.subscribe(userId, {
@@ -55,7 +58,7 @@ async function joinVoice(member, selectedTextChannels, mode) { // Добавим
             })
             .on('end', async () => {
                 if (duration > AUDIO_SETTINGS.MIN_DURATION) {
-                    await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannels, { WHISPER_SETTINGS, MODE: mode }, member.guild); // Передаем mode
+                    await sendTranscriptionRequest(Buffer.concat(audioBuffer), user, selectedTextChannels, { WHISPER_SETTINGS, MODE }, member.guild);
                 } else {
                     console.log('Audio is too short to transcribe.');
                 }

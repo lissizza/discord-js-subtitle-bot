@@ -1,27 +1,17 @@
-const WHISPER_SETTINGS = {
-    temperature: 0.5,
-    language: 'en',
-    targetLanguage: 'en'
-};
+const fs = require('fs');
 
-const AUDIO_SETTINGS = {
-    MIN_DURATION: 1.0,
-    SAMPLE_RATE: 48000,
-    CHANNELS: 1,
-    SILENCE_DURATION: 100,
-    BYTES_PER_SAMPLE: 2
-};
+const configPath = './config.json';
 
-let MODE = 'transcribe';
+function readConfig() {
+  const data = fs.readFileSync(configPath);
+  return JSON.parse(data);
+}
 
-const MODEL = {
-    TRANSLATION_MODEL: 'gpt-3.5-turbo',
-    TRANSCRIPTION_MODEL: 'whisper-1'
-};
+function writeConfig(config) {
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+}
 
 module.exports = {
-    WHISPER_SETTINGS,
-    AUDIO_SETTINGS,
-    MODE,
-    MODEL
+  readConfig,
+  writeConfig
 };

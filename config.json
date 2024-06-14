@@ -1,0 +1,19 @@
+{
+  "WHISPER_SETTINGS": {
+    "temperature": 0.9,
+    "language": "en",
+    "targetLanguage": "ru"
+  },
+  "AUDIO_SETTINGS": {
+    "MIN_DURATION": 1,
+    "SAMPLE_RATE": 48000,
+    "CHANNELS": 1,
+    "SILENCE_DURATION": 100,
+    "BYTES_PER_SAMPLE": 2
+  },
+  "MODE": "transcribe",
+  "MODEL": {
+    "TRANSLATION_MODEL": "gpt-4-turbo",
+    "TRANSCRIPTION_MODEL": "whisper-1"
+  }
+}

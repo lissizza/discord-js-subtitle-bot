@@ -1,5 +1,5 @@
 const { joinVoice, leaveVoice } = require('./audioProcessing');
-let { WHISPER_SETTINGS, AUDIO_SETTINGS, MODE } = require('./config');
+const { readConfig, writeConfig } = require('./config');
 const {
     createSettingsModal,
     getSettingsValue,
@@ -95,28 +95,33 @@ async function handleSelectMenuInteraction(interaction) {
 async function updateSettings(interaction, setting, newValue) {
     console.log(`Received new value for setting ${setting}: ${newValue}`);
 
-    if (AUDIO_SETTINGS.hasOwnProperty(setting)) {
-        AUDIO_SETTINGS[setting] = parseFloat(newValue);
-    } else if (WHISPER_SETTINGS.hasOwnProperty(setting)) {
-        WHISPER_SETTINGS[setting] = newValue;
+    const config = readConfig();
+
+    if (config.AUDIO_SETTINGS.hasOwnProperty(setting)) {
+        config.AUDIO_SETTINGS[setting] = parseFloat(newValue);
+    } else if (config.WHISPER_SETTINGS.hasOwnProperty(setting)) {
+        config.WHISPER_SETTINGS[setting] = newValue;
     } else if (setting === 'mode') {
-        MODE = newValue;
-        console.log(`Mode updated to: ${MODE}`);
-        if (MODE === 'translate') {
+        config.MODE = newValue;
+        console.log(`Mode updated to: ${config.MODE}`);
+        if (config.MODE === 'translate') {
             const row = createTargetLanguageButton();
             await interaction.followUp({ content: 'Set the target language for translation:', components: [row], ephemeral: true });
+            writeConfig(config); // Write the updated config to file
             return;
         }
     } else {
         await interaction.followUp({ content: 'Unknown setting.', ephemeral: true });
         return;
     }
+    writeConfig(config); // Write the updated config to file
     await interaction.followUp({ content: `${SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting]} set to ${newValue}`, ephemeral: true });
 }
 
 async function handleJoin(interaction) {
+    const config = readConfig();
     if (interaction.member.voice.channel) {
-        await joinVoice(interaction.member, selectedTextChannels, MODE); // Pass MODE
+        await joinVoice(interaction.member, selectedTextChannels, config.MODE); // Pass MODE from config
         await interaction.reply({ content: 'Joined the voice channel!', ephemeral: true });
     } else {
         await interaction.reply({ content: 'You need to join a voice channel first!', ephemeral: true });
@@ -129,7 +134,8 @@ async function handleLeave(interaction) {
 }
 
 async function handleJoinCommand(message) {
-    await joinVoice(message.member, selectedTextChannels, MODE); // Pass MODE
+    const config = readConfig();
+    await joinVoice(message.member, selectedTextChannels, config.MODE); // Pass MODE from config
     message.reply('Joined the voice channel.');
 }
 
@@ -211,10 +217,11 @@ async function handlePostCommand(message) {
 }
 
 async function showDebugInfo(message) {
+    const config = readConfig();
     const debugInfo = {
-        WHISPER_SETTINGS,
-        AUDIO_SETTINGS,
-        MODE
+        WHISPER_SETTINGS: config.WHISPER_SETTINGS,
+        AUDIO_SETTINGS: config.AUDIO_SETTINGS,
+        MODE: config.MODE
     };
     message.reply(`\`\`\`json\n${JSON.stringify(debugInfo, null, 2)}\n\`\`\``);
 }
