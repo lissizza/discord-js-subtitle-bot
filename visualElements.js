@@ -154,15 +154,6 @@ const showSettings = async (interaction) => {
     await interaction.reply({ content: 'Select a setting to update:', components: rows, ephemeral: true });
 };
 
-const createTargetLanguageButton = () => {
-    return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('update_targetLanguage')
-            .setLabel('Target Language')
-            .setStyle(ButtonStyle.Secondary)
-    );
-};
-
 const showModeSelectionMenu = async (interaction) => {
     const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
@@ -176,7 +167,7 @@ const showModeSelectionMenu = async (interaction) => {
     await interaction.reply({ content: 'Select operation mode:', components: [row], ephemeral: true });
 };
 
-const showLanguageSelectionMenu = async (interaction, setting) => {
+const showLanguageSelectionMenu = async (source, setting) => {
     const languages = [
         { label: 'English', value: 'en' },
         { label: 'Spanish', value: 'es' },
@@ -200,7 +191,11 @@ const showLanguageSelectionMenu = async (interaction, setting) => {
             .addOptions(languages)
     );
 
-    await interaction.reply({ content: 'Select a language:', components: [row], ephemeral: true });
+    if (source.isCommand) {
+        await source.followUp({ content: 'Select a language:', components: [row], ephemeral: true });
+    } else {
+        await source.reply({ content: 'Select a language:', components: [row], ephemeral: true });
+    }
 };
 
 module.exports = {
@@ -211,8 +206,7 @@ module.exports = {
     showChannelSelectionMenu,
     showUserSelectionMenu,
     showSettings,
-    createTargetLanguageButton,
     showModeSelectionMenu,
     showLanguageSelectionMenu,
-    SETTINGS // Экспортируем SETTINGS
+    SETTINGS
 };

@@ -7,14 +7,13 @@ const {
     showChannelSelectionMenu,
     showUserSelectionMenu,
     showSettings,
-    createTargetLanguageButton,
     showModeSelectionMenu,
     showLanguageSelectionMenu,
     SETTINGS
 } = require('./visualElements');
 
 const { sendTranscriptionRequest } = require('./whisperSettings');
-const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const ISO6391 = require('iso-639-1');
 
 let selectedTextChannels = [];
 
@@ -92,7 +91,7 @@ async function handleSelectMenuInteraction(interaction) {
     }
 }
 
-async function updateSettings(interaction, setting, newValue) {
+async function updateSettings(source, setting, newValue, showLanguageMenu = true) {
     console.log(`Received new value for setting ${setting}: ${newValue}`);
 
     const config = readConfig();
@@ -104,18 +103,30 @@ async function updateSettings(interaction, setting, newValue) {
     } else if (setting === 'mode') {
         config.MODE = newValue;
         console.log(`Mode updated to: ${config.MODE}`);
-        if (config.MODE === 'translate') {
-            const row = createTargetLanguageButton();
-            await interaction.followUp({ content: 'Set the target language for translation:', components: [row], ephemeral: true });
-            writeConfig(config); // Write the updated config to file
-            return;
+        writeConfig(config); // Write the updated config to file
+        if (source.isCommand) {
+            await source.followUp({ content: `Mode set to ${newValue}`, ephemeral: true });
+        } else {
+            await source.reply(`Mode set to ${newValue}`);
         }
+        if (config.MODE === 'translate' && showLanguageMenu) {
+            await showLanguageSelectionMenu(source, 'targetLanguage'); // Show language selection menu
+        }
+        return;
     } else {
-        await interaction.followUp({ content: 'Unknown setting.', ephemeral: true });
+        if (source.isCommand) {
+            await source.followUp({ content: 'Unknown setting.', ephemeral: true });
+        } else {
+            await source.reply('Unknown setting.');
+        }
         return;
     }
     writeConfig(config); // Write the updated config to file
-    await interaction.followUp({ content: `${SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting]} set to ${newValue}`, ephemeral: true });
+    if (source.isCommand) {
+        await source.followUp({ content: `${SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting]} set to ${newValue}`, ephemeral: true });
+    } else {
+        await source.reply(`${SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting]} set to ${newValue}`);
+    }
 }
 
 async function handleJoin(interaction) {
@@ -142,6 +153,33 @@ async function handleJoinCommand(message) {
 async function handleLeaveCommand(message) {
     leaveVoice(message.guild.id);
     message.reply('Disconnected from the voice channel.');
+}
+
+async function handlePostCommand(message) {
+    const args = message.content.split(' ');
+    const target = args[1];
+
+    if (target.startsWith('<#')) {
+        const channelId = target.slice(2, -1);
+        const textChannel = message.guild.channels.cache.get(channelId);
+        if (textChannel) {
+            selectedTextChannels.push({ type: 'channel', value: textChannel });
+            message.reply(`Selected channel for transcription: ${textChannel.name}`);
+        } else {
+            message.reply('Channel not found.');
+        }
+    } else if (target.startsWith('<@')) {
+        const userId = target.slice(2, -1);
+        const user = await message.client.users.fetch(userId);
+        if (user) {
+            selectedTextChannels.push({ type: 'user', value: user });
+            message.reply(`Selected user for transcription: ${user.username}`);
+        } else {
+            message.reply('User not found.');
+        }
+    } else {
+        message.reply('Invalid target for transcription.');
+    }
 }
 
 async function sendInitialMessage(channel) {
@@ -186,33 +224,21 @@ async function handleMessageCreate(message) {
         await showSettings(message);
     } else if (message.content === '!debug') {
         await showDebugInfo(message);
-    }
-}
-
-async function handlePostCommand(message) {
-    const args = message.content.split(' ');
-    const target = args[1];
-
-    if (target.startsWith('<#')) {
-        const channelId = target.slice(2, -1);
-        const textChannel = message.guild.channels.cache.get(channelId);
-        if (textChannel) {
-            selectedTextChannels.push({ type: 'channel', value: textChannel });
-            message.reply(`Selected channel for transcription: ${textChannel.name}`);
+    } else if (message.content.startsWith('!translate')) {
+        const args = message.content.split(' ');
+        if (args.length === 1) {
+            await showLanguageSelectionMenu(message, 'targetLanguage');
         } else {
-            message.reply('Channel not found.');
+            const language = args[1];
+            if (ISO6391.validate(language)) {
+                await updateSettings(message, 'targetLanguage', language, false);
+                await updateSettings(message, 'mode', 'translate', false);
+            } else {
+                await message.reply('Invalid language code. Please use a valid ISO-639-1 code.');
+            }
         }
-    } else if (target.startsWith('<@')) {
-        const userId = target.slice(2, -1);
-        const user = await message.client.users.fetch(userId);
-        if (user) {
-            selectedTextChannels.push({ type: 'user', value: user });
-            message.reply(`Selected user for transcription: ${user.username}`);
-        } else {
-            message.reply('User not found.');
-        }
-    } else {
-        message.reply('Invalid target for transcription.');
+    } else if (message.content === '!transcribe') {
+        await updateSettings(message, 'mode', 'transcribe', false);
     }
 }
 
