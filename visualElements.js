@@ -1,5 +1,5 @@
 const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ChannelType } = require('discord.js');
-const { WHISPER_SETTINGS, AUDIO_SETTINGS } = require('./config');
+const { WHISPER_SETTINGS, AUDIO_SETTINGS, MODE } = require('./config');
 
 const SETTINGS = {
     AUDIO: {
@@ -11,36 +11,54 @@ const SETTINGS = {
     },
     WHISPER: {
         temperature: 'Whisper Temperature',
-        language: 'Whisper Language'
+        language: 'Whisper Language',
+        targetLanguage: 'Target Language'
+    },
+    MODE: {
+        mode: 'Operation Mode'
     }
 };
 
 // Create a modal to input settings
 const createSettingsModal = (setting, currentValue) => {
-    let title = SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting];
+    let title = SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting] || SETTINGS.MODE[setting];
 
-    return new ModalBuilder()
-        .setCustomId(`settings_${setting}`)
-        .setTitle(`Update ${title}`)
-        .addComponents(
-            new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                    .setCustomId(`input_${setting}`)
-                    .setLabel(`New value for ${title}`)
-                    .setValue(currentValue)
-                    .setStyle(TextInputStyle.Short)
-            )
+    if (setting === 'mode') {
+        return new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('mode_transcribe')
+                .setLabel('Transcribe')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId('mode_translate')
+                .setLabel('Translate')
+                .setStyle(ButtonStyle.Secondary)
         );
+    } else {
+        return new ModalBuilder()
+            .setCustomId(`settings_${setting}`)
+            .setTitle(`Update ${title}`)
+            .addComponents(
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId(`input_${setting}`)
+                        .setLabel(`Value for ${title}`)
+                        .setValue(currentValue)
+                        .setStyle(TextInputStyle.Short)
+                )
+            );
+    }
 };
 
 const getSettingsValue = (setting) => {
     console.log(`Getting value for setting: ${setting}`);
     const settingValues = {
         ...AUDIO_SETTINGS,
-        ...WHISPER_SETTINGS
+        ...WHISPER_SETTINGS,
+        mode: MODE
     };
 
-    return settingValues[setting] ? settingValues[setting].toString() : '';
+    return settingValues[setting] !== undefined ? settingValues[setting].toString() : '';
 };
 
 // Create buttons for settings
@@ -59,14 +77,25 @@ const createSettingsButtons = () => {
             .setStyle(ButtonStyle.Primary)
     );
 
-    const audioSettingsRow = new ActionRowBuilder().addComponents(audioSettingsComponents);
-    const whisperSettingsRow = new ActionRowBuilder().addComponents(whisperSettingsComponents);
+    const modeSettingsComponents = Object.keys(SETTINGS.MODE).map(setting => 
+        new ButtonBuilder()
+            .setCustomId(`update_${setting}`)
+            .setLabel(SETTINGS.MODE[setting])
+            .setStyle(ButtonStyle.Primary)
+    );
 
-    return [audioSettingsRow, whisperSettingsRow];
+    const components = [...audioSettingsComponents, ...whisperSettingsComponents, ...modeSettingsComponents];
+    const rows = [];
+    
+    for (let i = 0; i < components.length; i += 5) {
+        rows.push(new ActionRowBuilder().addComponents(components.slice(i, i + 5)));
+    }
+
+    return rows;
 };
 
 const createInitialMenuButtons = () => {
-    return new ActionRowBuilder().addComponents(
+    const components = [
         new ButtonBuilder()
             .setCustomId('join')
             .setLabel('Join')
@@ -86,8 +115,20 @@ const createInitialMenuButtons = () => {
         new ButtonBuilder()
             .setCustomId('settings')
             .setLabel('Settings')
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('mode')
+            .setLabel('Mode')
             .setStyle(ButtonStyle.Secondary)
-    );
+    ];
+
+    const rows = [];
+    
+    for (let i = 0; i < components.length; i += 5) {
+        rows.push(new ActionRowBuilder().addComponents(components.slice(i, i + 5)));
+    }
+
+    return rows;
 };
 
 const createChannelSelectionMenu = (textChannels) => {
@@ -143,4 +184,5 @@ module.exports = {
     showChannelSelectionMenu,
     showUserSelectionMenu,
     showSettings,
+    SETTINGS // Экспортируем SETTINGS
 };

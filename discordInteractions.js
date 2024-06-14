@@ -1,5 +1,5 @@
 const { joinVoice, leaveVoice } = require('./audioProcessing');
-const { WHISPER_SETTINGS, AUDIO_SETTINGS } = require('./config');
+let { WHISPER_SETTINGS, AUDIO_SETTINGS, MODE } = require('./config');
 const {
     createSettingsModal,
     getSettingsValue,
@@ -7,7 +7,9 @@ const {
     showChannelSelectionMenu,
     showUserSelectionMenu,
     showSettings,
+    SETTINGS
 } = require('./visualElements');
+const { sendTranscriptionRequest } = require('./whisperSettings');
 
 let selectedTextChannels = [];
 
@@ -43,6 +45,13 @@ async function handleButtonInteraction(interaction) {
         await showUserSelectionMenu(interaction);
     } else if (interaction.customId === 'settings') {
         await showSettings(interaction);
+    } else if (interaction.customId === 'mode') {
+        const row = createSettingsModal('mode', getSettingsValue('mode'));
+        await interaction.reply({ content: 'Select a mode:', components: [row], ephemeral: true });
+    } else if (interaction.customId === 'mode_transcribe') {
+        await updateSettings(interaction, 'mode', 'transcribe');
+    } else if (interaction.customId === 'mode_translate') {
+        await updateSettings(interaction, 'mode', 'translate');
     } else if (interaction.customId.startsWith('update_')) {
         const setting = interaction.customId.substring(7);
         console.log(`Received update request for setting: ${setting}`);
@@ -71,17 +80,20 @@ async function updateSettings(interaction, setting, newValue) {
     if (AUDIO_SETTINGS.hasOwnProperty(setting)) {
         AUDIO_SETTINGS[setting] = parseFloat(newValue);
     } else if (WHISPER_SETTINGS.hasOwnProperty(setting)) {
-        WHISPER_SETTINGS[setting] = setting === 'language' ? newValue : parseFloat(newValue);
+        WHISPER_SETTINGS[setting] = newValue;
+    } else if (setting === 'mode') {
+        MODE = newValue;
+        console.log(`Mode updated to: ${MODE}`);
     } else {
         await interaction.reply({ content: 'Unknown setting.', ephemeral: true });
         return;
     }
-    await interaction.reply({ content: `${SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting]} set to ${newValue}`, ephemeral: true });
+    await interaction.reply({ content: `${SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting] || SETTINGS.MODE[setting]} set to ${newValue}`, ephemeral: true });
 }
 
 async function handleJoin(interaction) {
     if (interaction.member.voice.channel) {
-        await joinVoice(interaction.member, selectedTextChannels);
+        await joinVoice(interaction.member, selectedTextChannels, MODE); // Передаем MODE
         await interaction.reply({ content: 'Joined the voice channel!', ephemeral: true });
     } else {
         await interaction.reply({ content: 'You need to join a voice channel first!', ephemeral: true });
@@ -94,7 +106,7 @@ async function handleLeave(interaction) {
 }
 
 async function handleJoinCommand(message) {
-    await joinVoice(message.member, selectedTextChannels);
+    await joinVoice(message.member, selectedTextChannels, MODE); // Передаем MODE
     message.reply('Joined the voice channel.');
 }
 
@@ -104,8 +116,8 @@ async function handleLeaveCommand(message) {
 }
 
 async function sendInitialMessage(channel) {
-    const row = createInitialMenuButtons();
-    await channel.send({ content: 'Bot is ready. Select an action:', components: [row] });
+    const rows = createInitialMenuButtons();
+    await channel.send({ content: 'Bot is ready. Select an action:', components: rows });
 }
 
 async function handleChannelSelection(interaction) {
@@ -139,14 +151,14 @@ async function handleMessageCreate(message) {
         await handleJoinCommand(message);
     } else if (message.content === '!leave') {
         await handleLeaveCommand(message);
-    } else if (message.content.startsWith('!transcribe')) {
-        await handleTranscribeCommand(message);
+    } else if (message.content.startsWith('!post')) {
+        await handlePostCommand(message);
     } else if (message.content === '!settings') {
         await showSettings(message);
     }
 }
 
-async function handleTranscribeCommand(message) {
+async function handlePostCommand(message) {
     const args = message.content.split(' ');
     const target = args[1];
 

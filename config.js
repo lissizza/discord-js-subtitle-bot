@@ -1,6 +1,7 @@
-const WHISPER_SETTINGS = {
-    temperature: 0.5,
+let WHISPER_SETTINGS = {
     language: 'en',
+    targetLanguage: 'ru',
+    temperature: 0.5
 };
 
 let AUDIO_SETTINGS = {
@@ -11,7 +12,10 @@ let AUDIO_SETTINGS = {
     BYTES_PER_SAMPLE: 2
 };
 
+let MODE = 'transcribe';
+
 module.exports = {
     WHISPER_SETTINGS,
-    AUDIO_SETTINGS
+    AUDIO_SETTINGS,
+    MODE
 };
