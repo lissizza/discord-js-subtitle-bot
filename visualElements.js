@@ -11,43 +11,26 @@ const SETTINGS = {
     },
     WHISPER: {
         temperature: 'Whisper Temperature',
-        language: 'Whisper Language',
-        targetLanguage: 'Target Language'
-    },
-    MODE: {
-        mode: 'Operation Mode'
+        language: 'Recognition Language' // Changed from Whisper Language to Recognition Language
     }
 };
 
 // Create a modal to input settings
 const createSettingsModal = (setting, currentValue) => {
-    let title = SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting] || SETTINGS.MODE[setting];
+    let title = SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting] || 'Setting';
 
-    if (setting === 'mode') {
-        return new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('mode_transcribe')
-                .setLabel('Transcribe')
-                .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId('mode_translate')
-                .setLabel('Translate')
-                .setStyle(ButtonStyle.Secondary)
+    return new ModalBuilder()
+        .setCustomId(`settings_${setting}`)
+        .setTitle(`Update ${title}`)
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId(`input_${setting}`)
+                    .setLabel(`New value for ${title}`)
+                    .setValue(currentValue)
+                    .setStyle(TextInputStyle.Short)
+            )
         );
-    } else {
-        return new ModalBuilder()
-            .setCustomId(`settings_${setting}`)
-            .setTitle(`Update ${title}`)
-            .addComponents(
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                        .setCustomId(`input_${setting}`)
-                        .setLabel(`Value for ${title}`)
-                        .setValue(currentValue)
-                        .setStyle(TextInputStyle.Short)
-                )
-            );
-    }
 };
 
 const getSettingsValue = (setting) => {
@@ -77,14 +60,7 @@ const createSettingsButtons = () => {
             .setStyle(ButtonStyle.Primary)
     );
 
-    const modeSettingsComponents = Object.keys(SETTINGS.MODE).map(setting => 
-        new ButtonBuilder()
-            .setCustomId(`update_${setting}`)
-            .setLabel(SETTINGS.MODE[setting])
-            .setStyle(ButtonStyle.Primary)
-    );
-
-    const components = [...audioSettingsComponents, ...whisperSettingsComponents, ...modeSettingsComponents];
+    const components = [...audioSettingsComponents, ...whisperSettingsComponents];
     const rows = [];
     
     for (let i = 0; i < components.length; i += 5) {
@@ -176,6 +152,30 @@ const showSettings = async (interaction) => {
     await interaction.reply({ content: 'Select a setting to update:', components: rows, ephemeral: true });
 };
 
+// Create the target language button for translation mode
+const createTargetLanguageButton = () => {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('update_targetLanguage')
+            .setLabel('Set Target Language')
+            .setStyle(ButtonStyle.Primary)
+    );
+};
+
+// Show the mode selection menu
+const showModeSelectionMenu = async (interaction) => {
+    const row = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId('mode_select')
+            .setPlaceholder('Select Mode')
+            .addOptions([
+                { label: 'Transcribe', value: 'transcribe' },
+                { label: 'Translate', value: 'translate' }
+            ])
+    );
+    await interaction.reply({ content: 'Select the mode:', components: [row], ephemeral: true });
+};
+
 module.exports = {
     createSettingsModal,
     getSettingsValue,
@@ -184,5 +184,7 @@ module.exports = {
     showChannelSelectionMenu,
     showUserSelectionMenu,
     showSettings,
-    SETTINGS // Экспортируем SETTINGS
+    createTargetLanguageButton,
+    showModeSelectionMenu,
+    SETTINGS
 };

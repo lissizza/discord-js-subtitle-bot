@@ -7,9 +7,13 @@ const {
     showChannelSelectionMenu,
     showUserSelectionMenu,
     showSettings,
+    createTargetLanguageButton,
+    showModeSelectionMenu,
     SETTINGS
 } = require('./visualElements');
+
 const { sendTranscriptionRequest } = require('./whisperSettings');
+const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 
 let selectedTextChannels = [];
 
@@ -24,6 +28,7 @@ async function handleInteractionCreate(interaction) {
         } else if (interaction.isModalSubmit()) {
             const setting = interaction.customId.substring(9);
             const newValue = interaction.fields.getTextInputValue(`input_${setting}`);
+            await interaction.deferReply({ ephemeral: true });
             await updateSettings(interaction, setting, newValue);
         }
     } catch (error) {
@@ -46,12 +51,7 @@ async function handleButtonInteraction(interaction) {
     } else if (interaction.customId === 'settings') {
         await showSettings(interaction);
     } else if (interaction.customId === 'mode') {
-        const row = createSettingsModal('mode', getSettingsValue('mode'));
-        await interaction.reply({ content: 'Select a mode:', components: [row], ephemeral: true });
-    } else if (interaction.customId === 'mode_transcribe') {
-        await updateSettings(interaction, 'mode', 'transcribe');
-    } else if (interaction.customId === 'mode_translate') {
-        await updateSettings(interaction, 'mode', 'translate');
+        await showModeSelectionMenu(interaction);
     } else if (interaction.customId.startsWith('update_')) {
         const setting = interaction.customId.substring(7);
         console.log(`Received update request for setting: ${setting}`);
@@ -71,6 +71,10 @@ async function handleSelectMenuInteraction(interaction) {
         await handleChannelSelection(interaction);
     } else if (interaction.customId === 'select_user') {
         await handleUserSelection(interaction);
+    } else if (interaction.customId === 'mode_select') {
+        const newValue = interaction.values[0];
+        await interaction.deferReply({ ephemeral: true });
+        await updateSettings(interaction, 'mode', newValue);
     }
 }
 
@@ -84,16 +88,21 @@ async function updateSettings(interaction, setting, newValue) {
     } else if (setting === 'mode') {
         MODE = newValue;
         console.log(`Mode updated to: ${MODE}`);
+        if (MODE === 'translate') {
+            const row = createTargetLanguageButton();
+            await interaction.followUp({ content: 'Set the target language for translation:', components: [row], ephemeral: true });
+            return;
+        }
     } else {
-        await interaction.reply({ content: 'Unknown setting.', ephemeral: true });
+        await interaction.followUp({ content: 'Unknown setting.', ephemeral: true });
         return;
     }
-    await interaction.reply({ content: `${SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting] || SETTINGS.MODE[setting]} set to ${newValue}`, ephemeral: true });
+    await interaction.followUp({ content: `${SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting]} set to ${newValue}`, ephemeral: true });
 }
 
 async function handleJoin(interaction) {
     if (interaction.member.voice.channel) {
-        await joinVoice(interaction.member, selectedTextChannels, MODE); // Передаем MODE
+        await joinVoice(interaction.member, selectedTextChannels, MODE); // Pass MODE
         await interaction.reply({ content: 'Joined the voice channel!', ephemeral: true });
     } else {
         await interaction.reply({ content: 'You need to join a voice channel first!', ephemeral: true });
@@ -106,7 +115,7 @@ async function handleLeave(interaction) {
 }
 
 async function handleJoinCommand(message) {
-    await joinVoice(message.member, selectedTextChannels, MODE); // Передаем MODE
+    await joinVoice(message.member, selectedTextChannels, MODE); // Pass MODE
     message.reply('Joined the voice channel.');
 }
 
