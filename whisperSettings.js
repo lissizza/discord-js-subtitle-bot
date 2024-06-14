@@ -50,9 +50,10 @@ async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels,
             const transcription = response.data.text.trim();
             console.log(`Transcription: ${transcription}`);
             const content = settings.MODE === 'translate'
-                ? `**Original:** ${transcription}\n**Translation:** ${await translateText(transcription, settings.WHISPER_SETTINGS.targetLanguage)}`
+                ? `**Original:** ${transcription}\n**Translation:** ${await translateText(transcription, settings.WHISPER_SETTINGS.targetLanguage, user, selectedTextChannels, guild)}`
                 : transcription;
 
+            console.log(`Final message: ${content}`);
             for (const target of selectedTextChannels) {
                 if (target.type === 'channel' && target.value.guild.id === guild.id) {
                     await target.value.send(`${user.username}: ${content}`);
@@ -81,23 +82,33 @@ async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels,
     }
 }
 
-async function translateText(text, targetLanguage) {
-    const form = new FormData();
-    form.append('model', MODEL.TRANSLATION_MODEL);
-    form.append('messages[0][role]', 'system');
-    form.append('messages[0][content]', 'You are a helpful assistant.');
-    form.append('messages[1][role]', 'user');
-    form.append('messages[1][content]', `Translate the following text to ${targetLanguage}: ${text}`);
-    form.append('max_tokens', 100);
+async function translateText(text, targetLanguage, user, selectedTextChannels, guild) {
+    const data = {
+        model: MODEL.TRANSLATION_MODEL,
+        messages: [
+            { role: 'system', content: 'Translate the following text.' },
+            { role: 'user', content: `Translate to ${targetLanguage}: ${text}` }
+        ],
+        max_tokens: 100
+    };
 
     const headers = {
-        ...form.getHeaders(),
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
     };
 
     try {
-        const response = await axios.post('https://api.openai.com/v1/chat/completions', form, { headers });
-        return response.data.choices[0].message.content.trim();
+        console.log('Sending translation request...');
+        const response = await axios.post('https://api.openai.com/v1/chat/completions', data, { headers });
+
+        if (response.data && response.data.choices && response.data.choices.length > 0) {
+            const translation = response.data.choices[0].message.content.trim();
+            console.log(`Translation: ${translation}`);
+            return translation;
+        } else {
+            console.error('Translation response does not contain valid data:', response.data);
+            return '**Translation error**';
+        }
     } catch (error) {
         console.error('Error translating text:', error.response ? error.response.data : error.message);
         return '**Translation error**';

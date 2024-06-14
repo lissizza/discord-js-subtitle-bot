@@ -9,6 +9,7 @@ const {
     showSettings,
     createTargetLanguageButton,
     showModeSelectionMenu,
+    showLanguageSelectionMenu,
     SETTINGS
 } = require('./visualElements');
 
@@ -54,14 +55,16 @@ async function handleButtonInteraction(interaction) {
         await showModeSelectionMenu(interaction);
     } else if (interaction.customId.startsWith('update_')) {
         const setting = interaction.customId.substring(7);
-        console.log(`Received update request for setting: ${setting}`);
-        const defaultValue = getSettingsValue(setting);
-        console.log(`Updating setting ${setting} with default value: ${defaultValue}`);
-        if (!defaultValue) {
-            console.error(`No default value for setting ${setting}`);
+        if (setting === 'targetLanguage' || setting === 'language') {
+            await showLanguageSelectionMenu(interaction, setting); // Pass the setting
         } else {
-            const modal = createSettingsModal(setting, defaultValue);
-            await interaction.showModal(modal);
+            const defaultValue = getSettingsValue(setting);
+            if (!defaultValue) {
+                console.error(`No default value for setting ${setting}`);
+            } else {
+                const modal = createSettingsModal(setting, defaultValue);
+                await interaction.showModal(modal);
+            }
         }
     }
 }
@@ -75,6 +78,17 @@ async function handleSelectMenuInteraction(interaction) {
         const newValue = interaction.values[0];
         await interaction.deferReply({ ephemeral: true });
         await updateSettings(interaction, 'mode', newValue);
+    } else if (interaction.customId.startsWith('language_select')) {
+        const setting = interaction.customId.split('_')[2]; // Get the specific setting
+        const newValue = interaction.values[0];
+        if (newValue === 'other') {
+            const defaultValue = getSettingsValue(setting);
+            const modal = createSettingsModal(setting, defaultValue);
+            await interaction.showModal(modal);
+        } else {
+            await interaction.deferReply({ ephemeral: true });
+            await updateSettings(interaction, setting, newValue); // Use the specific setting
+        }
     }
 }
 
@@ -164,6 +178,8 @@ async function handleMessageCreate(message) {
         await handlePostCommand(message);
     } else if (message.content === '!settings') {
         await showSettings(message);
+    } else if (message.content === '!debug') {
+        await showDebugInfo(message);
     }
 }
 
@@ -192,6 +208,15 @@ async function handlePostCommand(message) {
     } else {
         message.reply('Invalid target for transcription.');
     }
+}
+
+async function showDebugInfo(message) {
+    const debugInfo = {
+        WHISPER_SETTINGS,
+        AUDIO_SETTINGS,
+        MODE
+    };
+    message.reply(`\`\`\`json\n${JSON.stringify(debugInfo, null, 2)}\n\`\`\``);
 }
 
 module.exports = {

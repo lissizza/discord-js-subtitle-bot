@@ -12,7 +12,7 @@ const AUDIO_SETTINGS = {
     BYTES_PER_SAMPLE: 2
 };
 
-const MODE = 'transcribe';
+let MODE = 'transcribe';
 
 const MODEL = {
     TRANSLATION_MODEL: 'gpt-3.5-turbo',

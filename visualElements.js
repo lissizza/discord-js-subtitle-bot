@@ -1,5 +1,6 @@
 const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ChannelType } = require('discord.js');
 const { WHISPER_SETTINGS, AUDIO_SETTINGS, MODE } = require('./config');
+const ISO6391 = require('iso-639-1');
 
 const SETTINGS = {
     AUDIO: {
@@ -11,13 +12,14 @@ const SETTINGS = {
     },
     WHISPER: {
         temperature: 'Whisper Temperature',
-        language: 'Recognition Language' // Changed from Whisper Language to Recognition Language
+        language: 'Recognition Language',
+        targetLanguage: 'Target Language'
     }
 };
 
 // Create a modal to input settings
 const createSettingsModal = (setting, currentValue) => {
-    let title = SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting] || 'Setting';
+    const title = SETTINGS.AUDIO[setting] || SETTINGS.WHISPER[setting];
 
     return new ModalBuilder()
         .setCustomId(`settings_${setting}`)
@@ -26,7 +28,7 @@ const createSettingsModal = (setting, currentValue) => {
             new ActionRowBuilder().addComponents(
                 new TextInputBuilder()
                     .setCustomId(`input_${setting}`)
-                    .setLabel(`New value for ${title}`)
+                    .setLabel(`Value for ${title}`)
                     .setValue(currentValue)
                     .setStyle(TextInputStyle.Short)
             )
@@ -152,17 +154,15 @@ const showSettings = async (interaction) => {
     await interaction.reply({ content: 'Select a setting to update:', components: rows, ephemeral: true });
 };
 
-// Create the target language button for translation mode
 const createTargetLanguageButton = () => {
     return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('update_targetLanguage')
-            .setLabel('Set Target Language')
-            .setStyle(ButtonStyle.Primary)
+            .setLabel('Target Language')
+            .setStyle(ButtonStyle.Secondary)
     );
 };
 
-// Show the mode selection menu
 const showModeSelectionMenu = async (interaction) => {
     const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
@@ -173,7 +173,34 @@ const showModeSelectionMenu = async (interaction) => {
                 { label: 'Translate', value: 'translate' }
             ])
     );
-    await interaction.reply({ content: 'Select the mode:', components: [row], ephemeral: true });
+    await interaction.reply({ content: 'Select operation mode:', components: [row], ephemeral: true });
+};
+
+const showLanguageSelectionMenu = async (interaction, setting) => {
+    const languages = [
+        { label: 'English', value: 'en' },
+        { label: 'Spanish', value: 'es' },
+        { label: 'French', value: 'fr' },
+        { label: 'German', value: 'de' },
+        { label: 'Russian', value: 'ru' },
+        { label: 'Chinese', value: 'zh' },
+        { label: 'Portuguese', value: 'pt' },
+        { label: 'Hindi', value: 'hi' },
+        { label: 'Urdu', value: 'ur' },
+        { label: 'Japanese', value: 'ja' },
+        { label: 'Arabic', value: 'ar' },
+        { label: 'Turkish', value: 'tr' },
+        { label: 'Other Language', value: 'other' }
+    ];
+
+    const row = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId(`language_select_${setting}`)
+            .setPlaceholder('Select a language')
+            .addOptions(languages)
+    );
+
+    await interaction.reply({ content: 'Select a language:', components: [row], ephemeral: true });
 };
 
 module.exports = {
@@ -186,5 +213,6 @@ module.exports = {
     showSettings,
     createTargetLanguageButton,
     showModeSelectionMenu,
-    SETTINGS
+    showLanguageSelectionMenu,
+    SETTINGS // Экспортируем SETTINGS
 };
