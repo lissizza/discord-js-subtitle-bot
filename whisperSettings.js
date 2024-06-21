@@ -3,11 +3,27 @@ const axios = require('axios');
 require('dotenv').config();
 const ISO6391 = require('iso-639-1');
 const { readConfig } = require('./config');
+const fs = require('fs');
+const path = require('path');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // Function to validate ISO-639-1 language codes and 'auto'
 const isValidISO6391 = (code) => ISO6391.validate(code) || code === 'auto';
+
+const getLogFilePath = () => {
+    const logDir = path.join(__dirname, 'logs');
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir);
+    }
+    const logFileName = new Date().toISOString().split('T')[0] + '.log';
+    return path.join(logDir, logFileName);
+};
+
+const logMessage = (message) => {
+    const logFilePath = getLogFilePath();
+    fs.appendFileSync(logFilePath, message + '\n');
+};
 
 async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels, settings, guild) {
     const config = readConfig();
@@ -30,6 +46,8 @@ async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels,
                     await target.value.send(`${user.username}: ${warningMessage}`);
                 }
             }
+            logMessage(`[${new Date().toISOString()}] User ${user.username}: ${warningMessage}`);
+            console.log(`User ${user.username}: ${warningMessage}`);
             return;
         }
         // Append setting to form if language is not 'auto'
@@ -44,15 +62,12 @@ async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels,
     };
 
     try {
-        console.log('Sending transcription request...');
         const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, { headers });
 
         if (response.data && response.data.text) {
             const transcription = response.data.text.trim();
-            console.log(`Transcription: ${transcription}`);
 
             let content = transcription;
-            console.log('Current mode:', config.MODE);
             if (config.MODE === 'translate') {
                 const translation = await translateText(transcription, config.WHISPER_SETTINGS.targetLanguage);
                 content = `**Original:** ${transcription}\n**Translation:** ${translation}`;
@@ -63,10 +78,11 @@ async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels,
                     await target.value.send(`${user.username}: ${content}`);
                 } else if (target.type === 'user') {
                     await target.value.send(`${user.username}: ${content}`);
-                } else {
-                    console.log('No valid text channel or user selected.');
                 }
             }
+            const logEntry = `[${new Date().toISOString()}] User ${user.username}:\n${content}`;
+            logMessage(logEntry);
+            console.log(`User ${user.username}: ${content}`);
         } else {
             console.error('Transcription response does not contain text:', response.data);
         }
@@ -82,6 +98,8 @@ async function sendTranscriptionRequest(audioBuffer, user, selectedTextChannels,
                     await target.value.send(`${user.username}: ${warningMessage}`);
                 }
             }
+            logMessage(`[${new Date().toISOString()}] User ${user.username}: ${warningMessage}`);
+            console.log(`User ${user.username}: ${warningMessage}`);
         }
     }
 }
@@ -103,9 +121,7 @@ async function translateText(text, targetLanguage) {
     };
 
     try {
-        console.log('Sending translation request with data:', JSON.stringify(data, null, 2));
         const response = await axios.post('https://api.openai.com/v1/chat/completions', data, { headers });
-        console.log('Translation response:', response.data);
         return response.data.choices[0].message.content.trim();
     } catch (error) {
         console.error('Error translating text:', error.response ? error.response.data : error.message);
