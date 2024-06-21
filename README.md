@@ -1,19 +1,20 @@
 # Discord JS Subtitle Bot
 
-This is a Discord bot that joins a voice channel, listens to the conversation, and posts transcriptions in a selected text channel using OpenAI's Whisper API.
+This is a Discord bot that joins a voice channel, listens to the conversation, and posts transcriptions or translations in a selected text channel using OpenAI's Whisper API.
 
 ## Version
 
-Current version: v1.1.0
-
+Current version: v1.1.2
 
 ## Features
 
 - Joins a voice channel and listens to conversations.
 - Transcribes audio using OpenAI's Whisper API.
-- Posts transcriptions in a selected text channel.
+- Translates transcriptions to a selected language using OpenAI's models.
+- Posts transcriptions or translations in a selected text channel.
 - Allows users to select the text channel using buttons or commands.
-- Provides a settings menu to configure transcription parameters.
+- Provides a settings menu to configure transcription and translation parameters.
+- Supports command-based configuration for ease of use.
 
 ## Setup
 
@@ -64,6 +65,8 @@ Current version: v1.1.0
 - `!leave`: Leaves the voice channel.
 - `!set_text_channel`: Displays buttons to select a new text channel for transcriptions.
 - `!settings`: Displays the settings menu to configure transcription parameters.
+- `!transcribe`: Switches the bot to transcription mode.
+- `!translate <lang>`: Switches the bot to translation mode and sets the target language to `<lang>`. If `<lang>` is not provided, a language selection menu is displayed.
 
 ### Buttons
 
@@ -77,6 +80,7 @@ Current version: v1.1.0
 - **Silence Duration**: Configures the duration of silence to end the recording.
 - **Whisper Temperature**: Configures the temperature parameter for the Whisper API.
 - **Whisper Language**: Configures the language parameter for the Whisper API.
+- **Target Language**: Configures the target language for translation.
 
 ## License
 
